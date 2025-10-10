@@ -1,0 +1,34 @@
+groups:
+  - name: kycrisk-api
+    rules:
+      - alert: HighErrorRate
+        expr: sum(rate(http_requests_total{job="kyc-api",status!~"2.."}[5m])) / sum(rate(http_requests_total{job="kyc-api"}[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: High error rate on KYC API
+          description: Error rate exceeds 5% over 10m.
+
+      - alert: HighLatencyP95
+        expr: histogram_quantile(0.95, sum(rate(request_latency_seconds_bucket{job="kyc-api"}[5m])) by (le)) > 0.3
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: High p95 latency on KYC API
+          description: p95 latency over 300ms for 10m.
+
+      - alert: ThroughputDrop
+        expr: (
+          sum(rate(decisions_total{job="kyc-api"}[5m]))
+        ) < (
+          sum(rate(decisions_total{job="kyc-api"}[1h])) * 0.3
+        )
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Throughput dropped vs baseline
+          description: Sudden drop below 30% of 1h baseline.
+

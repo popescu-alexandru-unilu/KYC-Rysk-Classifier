@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KYC Risk Classifier</title>
+  <!-- Pico.css for instant good-looking UI -->
+  <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@2.0.6/css/pico.min.css">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="container center mt-xl">
+    <h1>🛡️ Invisible KYC Analyst</h1>
+    <p class="muted">Paste client evidence. Get a <b>risk label</b>, probabilities, and clear reasons.</p>
+    <small id="api-url" class="muted"></small>
+  </header>
+
+  <main class="container center-col">
+    <!-- LEFT: input -->
+    <section class="card">
+      <h2>Client Evidence</h2>
+
+      <div class="chips">
+        <button class="chip danger" data-sample="sanctions">Sanctions Example</button>
+        <button class="chip success" data-sample="clean">Clean Example</button>
+        <button class="chip warning" data-sample="fatf">FATF High-Risk</button>
+      </div>
+
+      <textarea id="evidence" rows="12" placeholder="[KYC] Name: …&#10;[COUNTRY] …&#10;[SANCTIONS] list=…&#10;[MEDIA] …"></textarea>
+
+      <label class="switcher">
+        <input type="checkbox" id="override" checked />
+        <span>Policy override (any sanctions ⇒ HIGH)</span>
+      </label>
+
+      <div class="actions">
+        <button id="assess" class="primary">Assess Risk</button>
+        <button id="clear" class="secondary outline">Clear</button>
+      </div>
+
+      <p class="muted tiny">Tip: Cmd/Ctrl+Enter to assess</p>
+      <p class="muted tiny">Built for demo purposes. Do not submit real PII.</p>
+      <p id="error" class="error tiny" hidden>—</p>
+    </section>
+
+    <!-- RIGHT: result -->
+    <section class="card" id="result-card" hidden>
+      <div class="result-header">
+        <span id="badge" class="badge">LOW</span>
+        <span id="band" class="chip" title="Policy bands: low>=0.70, high>=0.80">BAND: LOW</span>
+        <div>
+          <h3 id="label">LOW RISK</h3>
+          <small id="meta" class="muted">—</small>
+        </div>
+        <button id="copy" class="secondary outline small">Copy JSON</button>
+      </div>
+
+      <div>
+        <h4>Probability</h4>
+        <div class="bar">
+          <div class="bar-row"><span>LOW</span><progress id="p-low" max="100" value="0"></progress><small id="t-low">0%</small></div>
+          <div class="bar-row"><span>MED</span><progress id="p-med" max="100" value="0"></progress><small id="t-med">0%</small></div>
+          <div class="bar-row"><span>HIGH</span><progress id="p-high" max="100" value="0"></progress><small id="t-high">0%</small></div>
+          <div class="bar-row" id="row-critical"><span>CRIT</span><progress id="p-crit" max="100" value="0"></progress><small id="t-crit">0%</small></div>
+        </div>
+      </div>
+
+      <div>
+        <h4>Why</h4>
+        <ul id="reasons" class="reasons"></ul>
+      </div>
+
+      <div>
+        <small id="policy-meta" class="tiny muted"></small>
+      </div>
+    </section>
+
+    <!-- AUDIT SEARCH -->
+    <section class="card">
+      <h2>Audit Search</h2>
+      <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.5rem;align-items:end;">
+        <div><label>Label</label><input id="s-label" placeholder="low|medium|high" /></div>
+        <div><label>Rule</label><input id="s-rule" placeholder="model_only|sanctions_override" /></div>
+        <div><label>Band</label><input id="s-band" placeholder="low|medium|high" /></div>
+        <div><label>Country</label><input id="s-country" placeholder="DE" /></div>
+        <div><label>Owner</label><input id="s-owner" placeholder="teamA" /></div>
+        <div><label>Lang</label><input id="s-lang" placeholder="en" /></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem;align-items:end;margin-top:.5rem;">
+        <div><label>Since</label><input id="s-since" placeholder="2025-01-01T00:00:00" /></div>
+        <div><label>Until</label><input id="s-until" placeholder="2025-12-31T23:59:59" /></div>
+        <div><label>Limit</label><input id="s-limit" type="number" value="50" min="1" max="500" /></div>
+        <div><button id="s-run" class="primary">Search</button></div>
+      </div>
+      <div id="s-error" class="error tiny" hidden>—</div>
+      <div id="s-results" class="mt-xl tiny"></div>
+    </section>
+  </main>
+
+  <script src="./config.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

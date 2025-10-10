@@ -1,0 +1,28 @@
+services:
+  api:
+    build: ./api
+    environment:
+      AUDIT_HMAC: "change_me_in_prod"
+      MODEL_CKPT: /app/minilm_cls_best.pt
+      RISK_RULES: /app/config/risk_rules.yaml
+    volumes:
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+      - ./minilm_cls_best.pt:/app/minilm_cls_best.pt:ro
+    ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD","curl","-f","http://localhost:8000/health"]
+      interval: 10s
+      timeout: 2s
+      retries: 5
+
+  ui:
+    build: ./ui
+    depends_on:
+      api:
+        condition: service_healthy
+    ports: ["3000:80"]
+    volumes:
+      - ./ui/config.js:/usr/share/nginx/html/config.js:ro
+
+  # optional: nginx reverse proxy + TLS (bring your certs or use Caddy)

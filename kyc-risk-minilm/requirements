@@ -1,0 +1,12 @@
+torch
+transformers
+datasets
+pandas
+scikit-learn
+fastapi
+uvicorn
+PyYAML
+pydantic
+prometheus-client
+rapidfuzz
+unidecode

@@ -1,0 +1,26 @@
+thresholds:
+  inflow_ratio_high: 3.0
+  inflow_ratio_low: 1.8
+  burst_high: 50
+  burst_low: 10
+  media_high: 2
+override:
+  enable_sanctions: true
+fatf:
+  bump_enabled: true
+  high_risk: ["IRAN","DPRK","NORTH KOREA"]
+  monitored: ["MYANMAR","YEMEN","SYRIA","SOUTH SUDAN"]
+codes:
+  high_prefix: ["us-sdn","eu-","uk-","us-bis-el","ua-","seco","ofsi"]
+  medium_prefix: ["us-sam","us-hbs-oig","perm"]
+policy:
+  override_codes: ["us-bis-el","sdn","ofac","eu-fsf","ua-sa1644","us-sam","uk-hmt","seco"]
+  temperature: 1.0
+  bands:
+    low_min: 0.70
+    high_min: 0.80
+  auto_clear:
+    min_low_prob: 0.65
+    max_media: 0
+    max_burst: 10
+    max_inflow: 1.8

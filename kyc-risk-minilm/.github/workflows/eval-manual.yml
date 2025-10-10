@@ -1,0 +1,51 @@
+name: eval-manual
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python deps for harness
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests
+
+      - name: Build API image
+        run: docker compose build api
+
+      - name: Start API
+        run: docker compose up -d api
+
+      - name: Wait for API health
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://localhost:8000/health >/dev/null; then echo "healthy"; exit 0; fi
+            sleep 2
+          done
+          echo "API failed to become healthy" >&2
+          docker compose logs api || true
+          exit 1
+
+      - name: Run manual eval (skip if file missing)
+        run: |
+          if [ ! -f data/manual_test.jsonl ]; then
+            echo "manual_test.jsonl not found; skipping eval"; exit 0;
+          fi
+          python src/eval_manual.py --file data/manual_test.jsonl --api http://localhost:8000 --min_acc 0.85
+
+      - name: Teardown
+        if: always()
+        run: docker compose down -v
+

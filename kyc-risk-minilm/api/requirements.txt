@@ -1,0 +1,17 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+# Inference-only, CPU build
+torch==2.3.1+cpu
+transformers==4.57.0
+sentencepiece==0.1.99
+
+# API + utils
+fastapi==0.118.0
+uvicorn[standard]==0.37.0
+pydantic==2.11.1
+PyYAML==6.0.2
+prometheus-client==0.23.1
+rapidfuzz==3.14.1
+Unidecode==1.4.0
+pytest==8.3.3
+requests==2.32.3
