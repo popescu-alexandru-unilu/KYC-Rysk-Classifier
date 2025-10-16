@@ -73,11 +73,41 @@ Allowed to ask the chatbot
 
 “Download audit JSON for this case.”
 
-Allowed uploads (file types & hygiene)
+Batch and Uploads
 
-KYC docs (PDF/TXT), bank statements (PDF/CSV), adverse media excerpts (TXT), sanctions screenshots (PDF/PNG).
+- Ad‑hoc (UI)
+  - .txt → fills the textarea for a single run; you can edit and click Assess.
+  - .jsonl → runs a batch via `/classify_batch`, shows the first item’s result, and downloads a CSV of all decisions.
+  - UI limits: keep JSONL ≤ ~10k lines for responsiveness; a 60s timeout is used.
 
-Hygiene rules:
+- File format (JSONL): one JSON object per line with at least a `text` field. Optional `id` is recommended.
+  - Example lines:
+    - {"id":"C001","text":"[KYC] Name: Jane Roe. [COUNTRY] DE. [SANCTIONS] list=none. [MEDIA] 0 mentions"}
+    - {"id":"C002","text":"[KYC] Name: Atlas Trading. [COUNTRY] AE. [SANCTIONS] list=none. [MEDIA] 1 mention. Inflow ratio = 2.2"}
+    - {"id":"C003","text":"[KYC] Name: ACME Ltd. [COUNTRY] HK. [SANCTIONS] list=US-BIS-EL"}
+
+- Batch API payload shape: the API expects an object with an `items` array.
+  - POST /classify_batch with body:
+    - {"items":[{"id":"C001","text":"..."}, {"id":"C002","text":"..."}], "override": true}
+
+Nightly screening (reference)
+
+- Recommended: run a scheduled job against `/classify_batch` in chunks and save outputs.
+  - Input: JSONL on disk or object storage.
+  - Chunk size: 1–5k; respect server-side `BATCH_MAX` (default 256), e.g., use 200.
+  - Output: results.jsonl + CSV; the API also writes tamper‑evident audit lines with HMAC.
+
+Tooling
+
+- Headless batch client: `tools/batch_api_classify.py` (added) calls the API in chunks and writes JSONL+CSV.
+  - Usage:
+    - python tools/batch_api_classify.py --in clients.jsonl --out results.jsonl --csv results.csv \
+      --api http://localhost:8000 --override true --chunk 200 --timeout 60
+  - Auth: set `API_KEY` to send `X-API-Key`.
+
+Security & redaction
+
+- Server redacts PII in audit logs (configurable under `redaction:` in `config/risk_rules.yaml`). The client does not log content.
 
 Redact card PAN to last 4; remove CVV/track data.
 
@@ -468,7 +498,7 @@ Metrics: prometheus-client counters/histograms.
 
 Frontend
 
-Static SPA: vanilla JS + PicoCSS (or your Next.js variant).
+
 
 Features: example prompts, policy toggle, probability bars, “why” bullets.
 
@@ -652,3 +682,530 @@ Notes
 
 Results are capped by limit (1–500). You can set AUDIT_LOG_PATH to point the API to a different audit file if needed.
 Metadata tags are optional; include [OWNER], [CONF], [VER], [LANG] in the evidence text to populate them in responses and logs.
+I’ve updated both UI and API to resolve case sensitivity and improve band filtering.
+
+What changed
+
+UI normalization
+Lowercase: label, rule, band
+Uppercase: country
+Lowercase: owner, lang
+File: ui/app.js:147
+API search normalization
+Case-insensitive filters for label, rule, band, owner, lang; case-insensitive country match is preserved.
+Band behavior: when a band is provided, results include entries with missing band_label (old logs) and filter out only entries whose band_label is present and different.
+File: api/src/app.py:323
+Why this helps
+
+Case-insensitive matching prevents “HIGH” vs “high” mismatches.
+Older audit records without band_label are no longer excluded when a band is specified; only records explicitly labeled with a different band are filtered out.
+Quick checks
+
+UI: Enter “HIGH” in band/label fields — results should now match “high”.
+API direct call examples:
+Matches label case-insensitively: GET /audit_search?label=HIGH
+Includes old entries when band provided: GET /audit_search?band=high
+Owner/lang behave case-insensitively: GET /audit_search?owner=ACME&lang=EN
+Added file upload support that auto-fills the textarea with the file’s text.
+
+What I changed
+
+HTML: added an optional file input under the sample chips
+
+File: ui/index.html:27
+Element:
+Label: “Upload Text File (optional)”
+Input: id="file-upload", accept=".txt,.json,.md,.csv"
+JavaScript: wired a FileReader to populate the textarea and clear prior results/errors
+
+File: ui/app.js:226
+Behavior:
+On #file-upload change, read as text.
+Set #evidence value to file contents.
+Clear error, hide previous result, focus textarea.
+Notes
+
+Client-side only; no server changes needed for upload.
+The textarea content is replaced; to append instead, change the assignment to ev.value += ....
+Works in modern browsers; older versions may need polyfills.
+The app supports:
+
+- __Ad-hoc inference__: Yes, via specific endpoints:
+
+  - Single item: `/classify` (used by UI for manual inputs)
+  - Retrieves instant risk classification, probabilities, and reasons
+
+- __Batch processing__: Yes, via `/classify_batch`, handling multiple items in a single request. Includes batching logic for performance.
+
+- __Single tenant__: The application appears single-tenant by design—no multi-tenant features like user isolation or dynamic environments. It's containerized (Docker) for isolation per deployment.
+
+Key endpoints:
+
+- Ad-hoc: POST `/classify` with single text
+- Batch: POST `/classify_batch` with array of texts
+
+The nightly batch script uses `/classify_batch` for automated processing.
+Here’s what I implemented to meet your acceptance checklist.
+
+Headers + Response Shape
+
+Endpoints: /classify and /classify_batch return label, probs, why, rule
+File: api/src/app.py:108
+Response headers set on both routes:
+X-Model-Id: model checkpoint hash or basename
+X-Policy-Id: policy config hash
+X-Request-Id: per-request UUID
+Files:
+api/src/app.py:217, api/src/app.py:254
+Model ID computation: api/src/app.py:74
+Policy hash: api/src/app.py:47
+Auth: API Key
+
+Requires API key for /classify and /classify_batch; 401 if missing/invalid
+Accepts Authorization: Bearer KEY or X-API-Key: KEY
+Files:
+api/src/security.py:6
+api/src/app.py:141, api/src/app.py:231
+Config: set env var API_KEY to enable; if unset, auth is disabled (for dev).
+Batch Cap + 413
+
+Enforced max batch size via env BATCH_MAX (default 256)
+Exceeds limit → 413 with helpful detail (“batch size N exceeds limit M”)
+File: api/src/app.py:236
+Audit Logging
+
+One audit line per decision, including redacted text hash and HMAC
+Added request_id to each audit log entry
+Files:
+api/src/security.py:35 (request_id field)
+api/src/app.py:220, api/src/app.py:316 (pass request_id)
+Existing redaction and HMAC preserved:
+api/src/security.py:29, api/src/security.py:59
+Metrics
+
+Decision counts, overrides, latency histograms already present:
+Counters: api/src/app.py:10–15
+Latency: api/src/app.py:16–21; observe at api/src/app.py:224, api/src/app.py:321
+Metrics endpoint: api/src/app.py:96
+Health
+
+Shows device + config status (and now policy hash, model id):
+api/src/app.py:86
+How to use
+
+Set env:
+API_KEY=your-key
+BATCH_MAX=256 (optional)
+Call endpoints with headers:
+Authorization: Bearer your-key
+or X-API-Key: your-key
+Inspect headers on responses:
+X-Model-Id, X-Policy-Id, X-Request-Id
+I implemented the “quick wins” you outlined: server-side override policy, optional sanctions whitelist, richer override payload and audit, per-item override flags, split metrics, and a UI chip for clarity.
+
+Server-side override policy
+
+Adds a policy-controlled override switch and dry-run support.
+Helper: api/src/infer_minilm.py:29
+should_override(req_override_flag): forces override if policy.override_enabled=true; otherwise honors client flag.
+Reads RULES.policy.override_enabled (default true) and RULES.policy.override_dry_run (default false).
+classify and classify_batch use the server-side decision, not the UI flag.
+Files:
+api/src/app.py:148, api/src/app.py:247
+Applies override when should_override is true and codes exist; if override_dry_run is true, does not change the label but includes override_would_apply=true.
+Flags added to responses:
+override_applied: true|false
+override_would_apply: true when dry-run would have overridden
+Sanctions whitelist (optional)
+
+Whitelist valid sanctions codes via policy.sanctions.valid_codes.
+Implementation leaves behavior unchanged unless you configure valid_codes (empty set = no filtering).
+Files:
+api/src/infer_minilm.py:11, api/src/infer_minilm.py:19
+Tokenization still removes NONE_LIKE and punctuation; stops at next tag.
+Richer override payload and audit
+
+override_high_payload now accepts codes and includes:
+override_reason: "sanctions_hit"
+sanctions_codes (and sanc_codes) list
+Files: api/src/infer_minilm.py:49
+Audit log includes reason and codes if present.
+Files: api/src/security.py:63
+Metrics: split override vs model
+
+pred_total now includes labels label and path (“model” or “override”).
+Counter: api/src/app.py:10
+Increments:
+classify: api/src/app.py:214
+classify_batch: api/src/app.py:311
+Existing counters remain (decisions_total, sanctions_present_total, sanctions_override_total, latency histograms).
+API handlers adjustments
+
+classify
+Uses extract_sanctions_codes and should_override; sets override_applied/override_would_apply, passes codes to override_high_payload.
+Files: api/src/app.py:148–170, 206–225
+classify_batch
+Mirrors single behavior per item, preserves id, sets override flags per item, and passes codes.
+Files: api/src/app.py:246–287, 295–322
+UI clarity: override chip + codes
+
+New chip shows when override is applied, listing codes if present.
+Markup: ui/index.html:49
+Logic: ui/app.js:82
+UI now includes sanc_codes in mapped response for display.
+Files: ui/app.js:30
+Config usage
+
+You can add these to config/risk_rules.yaml under policy:
+policy.override_enabled: true|false
+policy.override_dry_run: true|false
+policy.sanctions.valid_codes: [us-bis-el, us-sdn, eu-blr, uk-hmt, …]
+If not set, override is enabled by default and dry-run is off; no whitelist filtering is applied.
+Notes
+
+Tests: existing tests are preserved (whitelist filters only apply when configured).
+Configurable thresholds (FATF, media, inflow)
+Added targeted unit tests for sanctions code parsing, aligned to current behavior and parameterized to cover whitelist scenarios.
+
+What I added
+
+New tests: tests/test_sanctions_parsing.py
+None value yields no codes and no override.
+Basic code parsing and hit: “US-SDN”.
+Mixed inputs: “none; US-SDN”.
+Stop at next tag: “eu-blr [MEDIA] 0” extracts only “eu-blr”.
+Whitelist behavior:
+With a non-empty whitelist not containing “jp-meti”, “unknown | jp-meti” yields no codes/hit.
+With whitelist containing “jp-meti”, it yields a hit.
+Space-separated alias case:
+With empty whitelist (default), “US SDN” produces tokens [“us”, “sdn”] and hits.
+With a non-empty whitelist that doesn’t include those tokens, they are filtered out and do not hit.
+Notes
+
+Tests monkeypatch the internal _valid_codes set in src.infer_minilm so you can validate both default and whitelisted behavior without altering global config files.
+These tests complement the existing recall tests and focus specifically on tricky parsing and whitelist filtering.
+I’ll unify the YAML schema and wire the new FATF logic into the pipeline, keeping backward compatibility and not breaking existing behavior.
+
+What I changed
+
+Unified YAML schema
+
+Replaced file: config/risk_rules.yaml:1
+Adds:
+version: 1
+thresholds: media_high, inflow_ratio_low, inflow_ratio_high, burst_high/burst_low
+fatf:
+mode: "list" | "score"
+high_risk, monitor, scores, bump_threshold
+policy:
+override_enabled, override_dry_run
+bands.low_min/high_min
+auto_clear.max_media/max_inflow
+temperature
+Keeps sensible defaults for fields the code expects but you didn’t include (min_low_prob, max_burst are defaulted in code).
+FATF adapters in code
+
+Load raw CFG from YAML alongside existing Pydantic RULES
+File: api/src/infer_minilm.py:12, api/src/infer_minilm.py:16
+New helpers:
+country_bucket(country): respects fatf.mode with list or score semantics
+File: api/src/infer_minilm.py:100
+apply_fatf_bump(label, country): bumps low→medium, medium→high when bucket is “high”
+File: api/src/infer_minilm.py:123
+Apply bump via the unified config in pipeline:
+apply_additional_rules now uses apply_fatf_bump instead of the older list-only helper
+File: api/src/infer_minilm.py:158
+Sanctions override config
+
+Already implemented earlier:
+should_override() respects policy.override_enabled / override_dry_run
+override_high_payload(codes) includes machine-readable fields
+classify and classify_batch use extract_sanctions_codes + should_override and set override_applied / override_would_apply
+UI clarity (earlier work)
+
+Shows “Policy override” chip with code list when applied
+Notes and rationale
+
+Backward-compatibility: Kept RULES usages for thresholds and policy; added CFG for new fatf.mode/score features. If extra YAML keys aren’t in Pydantic models, they are still read via the raw CFG.
+Reasons text: I left the existing country reason lines intact for now (generic “FATF high-risk/no flags”). If you want the precise “mode-driven” reasons (“monitor”, “high_score ≥ cut”), I can replace that block to use country_bucket for messaging as in your spec.
+Auto-clear: Your existing guardrails still apply; missing policy fields fall back to defaults (min_low_prob 0.65, max_burst 10). The new YAML only specifies max_media and max_inflow; the code already handles absent keys.
+Tests: Your sanctions parsing tests were added previously. If you want FATF list/score bump unit tests, I can add a small set that monkeypatches CFG to simulate modes.
+Yes — I updated build_reasons to emit the exact list vs score messages and added unit tests for both country_bucket and apply_fatf_bump.
+
+Code changes
+
+build_reasons: mode-aware FATF messages
+
+File: api/src/infer_minilm.py:190
+Behavior:
+high_risk → “FATF high-risk jurisdiction (policy bump applied)”
+monitor → “FATF on monitoring list”
+high_score → “FATF score ≥ {cut} (policy bump applied)”
+else → “no additional FATF flags”
+apply_fatf_bump: bump only for high buckets
+
+File: api/src/infer_minilm.py:126
+Now bumps only when country_bucket is "high_risk" or "high_score"; monitor does not bump.
+New tests
+
+tests/test_fatf_policy.py
+test_country_bucket_list_mode: verifies list-mode buckets (high_risk/monitor/none).
+test_apply_fatf_bump_list_mode: verifies bump for high_risk, no bump for monitor/none.
+test_country_bucket_score_mode_and_bump: verifies score-mode bucket with threshold and bump behavior.
+Uses monkeypatch to set module-level CFG fatf settings per test.
+Notes
+
+Unified CFG was already loaded; these tests and changes align with that logic.
+Done. I updated build_reasons to emit the exact list vs score FATF messages and added focused tests.
+
+Changes
+
+build_reasons messages
+
+File: api/src/infer_minilm.py:190
+Now emits:
+high_risk: “FATF high-risk jurisdiction (policy bump applied)”
+monitor: “FATF on monitoring list”
+high_score: “FATF score ≥ {cut} (policy bump applied)”
+else: “no additional FATF flags”
+Only bump on high buckets
+
+File: api/src/infer_minilm.py:126
+apply_fatf_bump now bumps only when bucket is high_risk or high_score (monitor does not bump).
+New tests
+
+tests/test_build_reasons.py
+test_build_reasons_fatf_list_highrisk: asserts “FATF high-risk jurisdiction (policy bump applied)”.
+test_build_reasons_fatf_list_monitor: asserts “FATF on monitoring list”.
+test_build_reasons_fatf_score_high: asserts “FATF score ≥ 80 (policy bump applied)”.
+test_build_reasons_no_flags: asserts “no additional FATF flags”.
+Uses monkeypatch to set module CFG and crafted text with [COUNTRY], [SANCTIONS] list=none, [MEDIA] 0.
+Implemented the quick validation upgrades and configurability you asked for.
+
+Configurable redaction + metrics
+
+Stronger redaction driven by YAML config
+File: api/src/security.py:2, 12
+Loads patterns from config and applies:
+long_number, alnum_id, iban, swift, email, phone
+Counts replacements per type with Prometheus:
+Counter: redactions_applied{type=...}
+New audit counter
+Counter: audited_total increments after each log line
+File: api/src/security.py:69
+YAML defaults added
+File: config/risk_rules.yaml:38
+redaction placeholders configured per type
+Reason trace for audits
+
+Responses now include a minimal machine-readable trace (kept out of UI by default but logged in audit):
+classify: builds trace for sanctions override and non-override paths
+classify_batch: mirrors per item
+Files:
+api/src/app.py:159, 168, 178, 298, 305
+Audit log includes trace
+File: api/src/security.py:64
+HMAC verification helper
+
+Script: tools/verify_audit.py
+Recomputes HMAC on each line and prints OK/FAIL
+Uses AUDIT_HMAC env var (defaults to change_me)
+Input validation guardrails
+
+classify now rejects inputs missing required tags [KYC] or [COUNTRY] with a 400 and non-PII message
+File: api/src/app.py:145
+How to validate now
+
+Redaction
+Send a PII-rich classify request (e.g., with email/IBAN/phone)
+Inspect logs/audit.jsonl: PII fields replaced with placeholders; only text_sha is stored
+Metrics: scrape /metrics for redactions_applied{type=...} and audited_total
+HMAC tamper check
+Modify a line in logs/audit.jsonl and run:
+AUDIT_HMAC=change_me_in_prod python tools/verify_audit.py
+Expect “HMAC MISMATCH” for the edited line and “FAIL”; otherwise “OK”
+Explainability
+curl /classify and check .why includes FATF messages
+Trace is present in audit log lines (not required by UI)
+Notes
+
+I kept build_reasons returning strings (compatibility). Trace is assembled in the route handlers to minimize churn.
+If you prefer trace to be generated centrally (e.g., a build_reasons_and_trace helper), I can refactor to that pattern.
+The new counters coexist with existing ones; dashboards can show both audited_total and audit_events_total.
+Added comprehensive tests to cover the missing areas you identified and wired minor code updates to support them.
+
+New tests
+
+tests/test_audit_search.py
+Writes a temp audit.jsonl and validates:
+Case-insensitive filters for label, band, country, owner/lang.
+Band filter includes entries missing band_label.
+tests/test_batch_inference.py
+Validates /classify_batch returns per-item responses, preserves ids, and sets override_applied.
+Enforces BATCH_MAX via env; > cap returns 413 with helpful error.
+Asserts response includes X-Request-Id header.
+tests/test_config_and_thresholds.py
+Overrides media_high threshold and asserts reasons include “Adverse media” when [MEDIA] >= threshold.
+tests/test_audit_integrity.py
+Uses security.log_decision to write a single audit line to a temp file, recomputes HMAC to ensure integrity, then tampers and detects mismatch.
+Directly tests security.redact on email/IBAN/SWIFT/phone/IDs.
+Supportive code updates
+
+api/src/app.py:145
+Added minimal tag validation for /classify: missing [KYC] or [COUNTRY] → 400 with non-PII error.
+api/src/app.py:159, 174, 298, 314
+Attach a compact trace object in responses to be included in audit logs.
+api/src/security.py
+Added configurable redaction with YAML-backed patterns; metrics counters:
+audited_total
+redactions_applied{type=...}
+Audit log now includes trace field.
+Config
+
+config/risk_rules.yaml:38
+Added redaction defaults per pattern key.
+Tooling
+
+tools/verify_audit.py
+HMAC verification helper script for logs/audit.jsonl (OK/FAIL).
+Notes
+
+API key enforcement remains disabled unless API_KEY env var is set (tests assume it’s unset).
+Tests avoid interfering with global audit logs by using temp files where appropriate (audit_search uses AUDIT_LOG_PATH env; HMAC test writes to tmp path via log_decision’s path arg).
+Here’s how to wire the dashboard end-to-end and the exact PromQL for each panel, aligned with the app’s metrics.
+
+Setup
+
+Prometheus scrape
+prometheus.yaml:
+scrape_configs:
+job_name: 'kyc-api'
+scrape_interval: 10s
+static_configs:
+targets: ['localhost:8000']
+Grafana import
+Add Prometheus datasource (name: Prometheus).
+Import ops/grafana/kyc_api_dashboard.json and select the datasource.
+PromQL Cheatsheet (per panel)
+
+Latency p50/p95/p99 (per route)
+p50: histogram_quantile(0.50, sum by (le) (rate(request_latency_seconds_bucket{route="classify"}[5m])))
+p95: histogram_quantile(0.95, sum by (le) (rate(request_latency_seconds_bucket{route="classify"}[5m])))
+p99: histogram_quantile(0.99, sum by (le) (rate(request_latency_seconds_bucket{route="classify"}[5m])))
+QPS (decisions/sec)
+sum(rate(decisions_total[1m]))
+Error rate (see note)
+If you have HTTP status counters: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m]))
+If not, use a reverse-proxy/exporter (nginx/apache/otel/http) or blackbox exporter. App doesn’t currently export per-status counters.
+Auto‑clear %
+100 * (sum(rate(autoclear_low_total[5m])) / sum(rate(decisions_total[5m])))
+Sanctions: present vs override
+Present: sum(rate(sanctions_present_total[5m]))
+Override: sum(rate(sanctions_override_total[5m]))
+Override ratio: (sum(rate(sanctions_override_total[5m])) / sum(rate(sanctions_present_total[5m])))
+Label distribution (by path=model|override)
+sum by (label, path) (rate(pred_total[5m]))
+For path-only split: sum by (path) (rate(pred_total[5m]))
+Audit integrity/ops (optional panels)
+Audit lines/sec: sum(rate(audited_total[5m]))
+Redactions/sec: sum by (type) (rate(redactions_applied[5m]))
+KPI Targets (example thresholds/alerts)
+
+Latency p95 ≤ 300ms: histogram_quantile(0.95, …) > 0.3 for 5m → alert.
+Auto‑clear ≥ 70%: 100 * (rate(autoclear_low_total[15m]) / rate(decisions_total[15m])) < 70 → alert.
+Override sanity: ratio of override to present near expected baseline (watch for drops/spikes).
+Notes
+
+The dashboard JSON expects a Prometheus datasource named Prometheus.
+App exports: request_latency_seconds (histogram, label route), decisions_total, autoclear_low_total, sanctions_present_total, sanctions_override_total, pred_total{label,path}, audit_events_total, plus added audited_total and redactions_applied{type}.
+For error rate, consider adding HTTP status metrics at the API or via a sidecar/proxy if you need first-party visibility.
+Want me to update ops/grafana/kyc_api_dashboard.json to add panels for redactions and audit lines, and wire the exact queries above?
+
+yea
+
+
+I added two new Grafana panels to ops/grafana/kyc_api_dashboard.json to visualize audit and redaction metrics.
+
+What’s added
+
+Audit lines/sec
+
+Panel title: “Audit lines/sec”
+Query: sum(rate(audited_total{job="$job"}[5m]))
+Grid: x=0, y=24, w=12, h=8
+Redactions/sec by type
+
+Panel title: “Redactions/sec by type”
+Query: sum by (type) (rate(redactions_applied{job="$job"}[5m]))
+Grid: x=12, y=24, w=12, h=8
+How to use
+
+Ensure Prometheus scrapes /metrics and sees audited_total and redactions_applied{type}.
+Import or refresh the dashboard in Grafana (datasource “Prometheus”).
+Thanks for the stack trace — the crash is due to the YAML schema change: version was set to an integer, but RiskRules expects a string.
+
+Fixes applied
+
+YAML: changed version from 1 to "1"
+File: config/risk_rules.yaml:1
+Loader hardening: coerce version to string if it’s numeric
+File: api/src/config.py:18
+Why this resolves it
+
+RiskRules.model_validate enforces types from the Pydantic model. With version cast to a string (or coerced by the loader), validation succeeds and the app can start.
+Next steps
+
+Restart the API. It should import and serve normally now.
+If you want broader coercion for other fields in the future, we can extend that loader shim accordingly.
+ added full .txt and .jsonl upload flows with status messages, CSV export, and accessibility, and wired them to the override toggle.
+
+What changed
+
+UI (placement + copy)
+
+File: ui/index.html:69
+Adds upload control directly under the textarea:
+Label: “Upload .txt or .jsonl”
+Input: accept=".txt,.jsonl", id="file-upload"
+Helper text: “.txt fills the box • .jsonl runs batch”
+Status line: #file-status with aria-live="polite"
+Removed the mistaken file input that was inside the result section.
+JavaScript (TXT + JSONL flows, CSV, drag & drop)
+
+File: ui/app.js:198
+TXT
+Loads file into textarea (soft cap 100k chars; shows “(truncated)” if over).
+Clears previous errors/results, focuses textarea.
+Status: “Loaded filename.txt (N chars) into the box.”
+JSONL
+Parses up to 10k valid lines with a text field.
+Sends single /classify_batch request with {items, override: ov.checked}.
+Renders the first item’s result on the right for immediate feedback.
+Builds and auto-downloads CSV with headers: idx,id,label,rule,low,medium,high,why.
+Status: “Processed N items from filename.jsonl. CSV downloaded.”
+Uses AbortController with a 60s timeout; disables controls during processing.
+Error states
+Unsupported type, empty file, malformed JSONL (no valid lines) → clear errors, set messages.
+Accessibility
+Status messages go to #file-status with aria-live="polite".
+Drag & drop
+Drop a .txt onto the textarea to load it (same cap/status).
+Dropping a .jsonl onto the textarea shows: “Use the upload control for batch files.”
+Notes
+
+Both flows respect the “Policy override” toggle: TXT uses it via the Assess button; JSONL passes override: ov.checked to /classify_batch.
+No client-side logging of contents.
+UI disables controls during batch; re-enables on completion or error.
+If you want a feature flag to enable/disable batch quickly, I can add a simple global in config.js the UI checks to hide/disable the .jsonl path.
+The existing server redaction is already on; we also added HMAC audit verification tooling earlier.
+QA checklist pointers
+
+TXT:
+Try small/large/empty files; non-UTF8 shows error reading.
+Editing after load works; Assess uses edited text.
+JSONL:
+Mixed valid/invalid lines; very large file up to a few thousand lines remains responsive; CSV matches fields.
+Override toggle changes results accordingly.
+Network:
+If API down: message appears; controls re-enable.
+Slow API: status and disabled state visible; recovers on return.

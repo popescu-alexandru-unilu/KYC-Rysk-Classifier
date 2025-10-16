@@ -1,26 +1,45 @@
+version: "1"
+
 thresholds:
-  inflow_ratio_high: 3.0
-  inflow_ratio_low: 1.8
+  media_high: 2            # ≥ -> reason “adverse media”
+  inflow_ratio_low: 1.8    # < -> reason “stable”
+  inflow_ratio_high: 3.0   # ≥ -> reason “unusual volume”
   burst_high: 50
   burst_low: 10
-  media_high: 2
-override:
-  enable_sanctions: true
+
 fatf:
-  bump_enabled: true
-  high_risk: ["IRAN","DPRK","NORTH KOREA"]
-  monitored: ["MYANMAR","YEMEN","SYRIA","SOUTH SUDAN"]
-codes:
-  high_prefix: ["us-sdn","eu-","uk-","us-bis-el","ua-","seco","ofsi"]
-  medium_prefix: ["us-sam","us-hbs-oig","perm"]
+  mode: "list"            # "list" or "score"
+  # If mode=="list": bump if country in one of these lists
+  high_risk: ["IRAN", "DPRK", "MYANMAR"]
+  monitor:   ["TURKEY", "PAKISTAN"]
+  # If mode=="score": use a numeric map + threshold
+  scores:
+    IRAN: 95
+    DPRK: 99
+    MYANMAR: 88
+    FR: 10
+  bump_threshold: 80      # if score >= threshold -> apply bump
+
 policy:
-  override_codes: ["us-bis-el","sdn","ofac","eu-fsf","ua-sa1644","us-sam","uk-hmt","seco"]
-  temperature: 1.0
+  # deterministic override for sanctions
+  override_enabled: true           # force override even if client sends override:false
+  override_dry_run: false          # if true, report would-override but don’t change label
+
+  # optional probability bands (UI can read if desired)
   bands:
     low_min: 0.70
     high_min: 0.80
+
+  # optional auto-clear guardrails (model-only; NOT an override)
   auto_clear:
-    min_low_prob: 0.65
-    max_media: 0
-    max_burst: 10
-    max_inflow: 1.8
+    max_media: 0                   # 0 means “no adverse media”
+    max_inflow: 1.8                # ≤1.8 inflow OK to auto-clear if probs favor LOW
+  temperature: 1.0
+
+redaction:
+  long_number: "<REDACTED_NUM>"
+  alnum_id: "<REDACTED_ID>"
+  iban: "<REDACTED_IBAN>"
+  swift: "<REDACTED_SWIFT>"
+  email: "<REDACTED_EMAIL>"
+  phone: "<REDACTED_PHONE>"

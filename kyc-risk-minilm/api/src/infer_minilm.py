@@ -1,6 +1,7 @@
-import argparse, json, sys, torch, re
+import argparse, json, sys, torch, re, os
+import yaml
 from .model_minilm import MiniLMClassifier, NUM_LABELS
-from .config import load_rules, RiskRules, is_high_risk_country
+from .config import load_rules, RiskRules
 
 LABELS = ["low","medium","high"] if NUM_LABELS == 3 else ["low","high"]
 ORDER  = {"low": 0, "medium": 1, "high": 2}
@@ -10,8 +11,32 @@ REV    = {v: k for k, v in ORDER.items()}
 RULES: RiskRules = load_rules()
 THR = RULES.thresholds
 
+# Unified raw config (YAML) for features not fully represented in Pydantic models
+def _load_cfg():
+    path = os.getenv("RISK_RULES", "config/risk_rules.yaml")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except Exception:
+        try:
+            return RULES.model_dump()
+        except Exception:
+            return {}
+
+CFG = _load_cfg()
+
 NONE_LIKE = {"", "none", "unknown", "na", "n/a", "null", "0"}
 CODE_SPLIT = re.compile(r"[;\|\s,]+")
+try:
+    sanctions_config = (RULES.policy or {}).get("sanctions", {})
+    valid_list = sanctions_config.get("valid_codes", [])
+    _valid_codes = set(
+        c.strip().lower()
+        for c in valid_list
+        if c is not None
+    )
+except Exception:
+    _valid_codes = set()
 
 def extract_sanctions_codes(text: str):
     """
@@ -24,8 +49,25 @@ def extract_sanctions_codes(text: str):
     raw = m.group(1)
     raw = raw.split("[", 1)[0]                 # stop at next tag e.g. "[MEDIA]"
     toks = CODE_SPLIT.split(raw)
-    toks = [re.sub(r"[^a-z0-9\-]+", "", t.lower()) for t in toks]  # strip punctuation
-    return [t for t in toks if t]
+    toks = [re.sub(r"[^a-z0-9\-]+", "", t.lower()) for t in toks]
+    toks = [t for t in toks if t and (t not in NONE_LIKE)]
+    if _valid_codes:
+        toks = [t for t in toks if t in _valid_codes]
+    return toks
+ 
+def should_override(req_override_flag: bool) -> bool:
+    """Decide if sanctions override policy is enabled server-side.
+    If policy override_enabled is True, force override; otherwise honor request flag.
+    Defaults to enabled when unspecified.
+    """
+    try:
+        pol = RULES.policy or {}
+        enabled = bool(pol.get("override_enabled", True))
+        if enabled:
+            return True
+    except Exception:
+        pass
+    return bool(req_override_flag)
 
 def _extract(text, pat, cast=float, default=None):
     m = re.search(pat, text, re.I)
@@ -70,6 +112,52 @@ def parse_signals(text: str):
         "lang": language,
     }
 
+
+def country_bucket(country: str | None) -> str | None:
+    if not country:
+        return None
+    c = str(country).strip().upper()
+    fatf = (CFG.get("fatf", {}) or {})
+    mode = str(fatf.get("mode", "list")).lower()
+
+    if mode == "list":
+        high = [str(x).upper() for x in (fatf.get("high_risk", []) or [])]
+        monitor = [str(x).upper() for x in (fatf.get("monitor", []) or fatf.get("monitored", []) or [])]
+        if any(c == x for x in high):
+            return "high_risk"
+        if any(c == x for x in monitor):
+            return "monitor"
+        return None
+
+    if mode == "score":
+        scores = fatf.get("scores", {}) or {}
+        try:
+            cut = float(fatf.get("bump_threshold", 80))
+        except Exception:
+            cut = 80.0
+        s = scores.get(c)
+        try:
+            s_val = float(s) if s is not None else None
+        except Exception:
+            s_val = None
+        if s_val is not None and s_val >= cut:
+            return "high_score"
+        return None
+
+    return None
+
+
+def apply_fatf_bump(label: str, country: str | None) -> str:
+    b = country_bucket(country)
+    # Only bump for high-risk buckets; monitoring does not bump
+    if b not in ("high_risk", "high_score"):
+        return label
+    if label == "low":
+        return "medium"
+    if label == "medium":
+        return "high"
+    return label
+
 def build_reasons(text: str, label: str, probs: dict, rule: str):
     s = parse_signals(text)
     why = []
@@ -102,10 +190,16 @@ def build_reasons(text: str, label: str, probs: dict, rule: str):
             why.append(f"No unusual trading burst observed ({s['burst_trades']} ≤ {THR.burst_low}) – activity within normal range")
 
     if s["country"]:
-        if is_high_risk_country(s["country"], RULES):
-            why.append(f"Country: {s['country']} – classified as FATF high-risk jurisdiction due to heightened regulatory scrutiny and potential for sanctions evasion")
+        bucket = country_bucket(s["country"])  # list/score driven
+        if bucket == "high_risk":
+            why.append(f"Country: {s['country']} – FATF high-risk jurisdiction (policy bump applied)")
+        elif bucket == "monitor":
+            why.append(f"Country: {s['country']} – FATF on monitoring list")
+        elif bucket == "high_score":
+            cut = (CFG.get("fatf", {}) or {}).get("bump_threshold", 80)
+            why.append(f"Country: {s['country']} – FATF score ≥ {cut} (policy bump applied)")
         else:
-            why.append(f"Country: {s['country']} – no additional jurisdictional risk flags")
+            why.append(f"Country: {s['country']} – no additional FATF flags")
 
     # If still empty, fall back to model confidence
     if not why:
@@ -117,23 +211,23 @@ def sanctions_hit(text: str) -> bool:
     codes = extract_sanctions_codes(text)
     return any(t not in NONE_LIKE for t in codes)
 
-def override_high_payload():
+def override_high_payload(codes: list[str] | None = None):
     probs = {k: 0.0 for k in LABELS}
     probs["high"] = 1.0
-    return {"probs": probs, "label": "high", "rule": "sanctions_override"}
+    codes = codes or []
+    return {
+        "probs": probs,
+        "label": "high",
+        "rule": "sanctions_override",
+        "override_reason": "sanctions_hit",
+        "sanctions_codes": codes,
+        "sanc_codes": codes,
+    }
 
 def apply_additional_rules(res: dict, text: str, rules: RiskRules | None = None):
-    rules = rules or RULES
-    if not (rules.fatf and rules.fatf.bump_enabled):
-        return res
+    # FATF bump via unified config (list or score); high lifts by 1 step
     s = parse_signals(text)
-    if not s.get("country"):
-        return res
-    if is_high_risk_country(s["country"], rules):
-        if res['label'] == 'low':
-            res['label'] = 'medium'
-        elif res['label'] == 'medium':
-            res['label'] = 'high'
+    res['label'] = apply_fatf_bump(res.get('label', 'low'), s.get('country'))
     return res
 
 def bump_label_by_rules(parsed: dict, base_label: str) -> str:

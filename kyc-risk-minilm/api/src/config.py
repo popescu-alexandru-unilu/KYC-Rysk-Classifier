@@ -41,6 +41,12 @@ def load_rules(path: Optional[str] = None) -> RiskRules:
     cfg_path = path or os.getenv("RISK_RULES", "config/risk_rules.yaml")
     with open(cfg_path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
+    # Coerce version to string if it was provided as a number
+    try:
+        if "version" in data and data["version"] is not None and not isinstance(data["version"], str):
+            data["version"] = str(data["version"])
+    except Exception:
+        pass
     return RiskRules.model_validate(data)
 
 

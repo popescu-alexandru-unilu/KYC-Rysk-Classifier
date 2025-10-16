@@ -19,10 +19,9 @@ def sanctions_hit(text: str) -> bool:
     return _sanctions_hit(text)
 
 
-def override_high_payload() -> dict:
-    return _override_high_payload()
+def override_high_payload(codes: list[str] | None = None) -> dict:
+    return _override_high_payload(codes)
 
 
 def apply_additional_rules(res: dict, text: str, cfg: dict) -> dict:
     return _apply_additional_rules(res, text, cfg)
-

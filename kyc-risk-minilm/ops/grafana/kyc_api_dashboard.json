@@ -1,75 +1,170 @@
-{
-  "title": "KYC Risk API",
-  "uid": "kyc-api",
-  "timezone": "browser",
-  "schemaVersion": 38,
-  "version": 1,
-  "refresh": "10s",
-  "time": { "from": "now-6h", "to": "now" },
-  "templating": {
-    "list": [
-      {
-        "name": "job",
-        "type": "query",
-        "datasource": "Prometheus",
-        "query": "label_values(request_latency_seconds_bucket, job)",
-        "refresh": 1,
-        "current": { "text": "kyc-api", "value": "kyc-api" }
-      }
-    ]
-  },
-  "panels": [
-    {
-      "type": "timeseries",
-      "title": "p50 / p95 / p99 latency (s)",
-      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
-      "targets": [
-        {"expr": "histogram_quantile(0.50, sum by (le) (rate(request_latency_seconds_bucket{job=\"$job\"}[5m])))", "legendFormat": "p50"},
-        {"expr": "histogram_quantile(0.95, sum by (le) (rate(request_latency_seconds_bucket{job=\"$job\"}[5m])))", "legendFormat": "p95"},
-        {"expr": "histogram_quantile(0.99, sum by (le) (rate(request_latency_seconds_bucket{job=\"$job\"}[5m])))", "legendFormat": "p99"}
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "QPS (decisions/sec)",
-      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
-      "targets": [
-        {"expr": "sum(rate(decisions_total{job=\"$job\"}[5m]))", "legendFormat": "decisions"}
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Error rate",
-      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
-      "targets": [
-        {"expr": "sum(rate(http_requests_total{job=\"$job\",status!~\"2..\"}[5m])) / sum(rate(http_requests_total{job=\"$job\"}[5m]))", "legendFormat": "error rate"}
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Auto-clear %",
-      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
-      "targets": [
-        {"expr": "sum(rate(autoclear_low_total{job=\"$job\"}[5m])) / sum(rate(decisions_total{job=\"$job\"}[5m]))", "legendFormat": "auto-clear%"}
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Sanctions: present vs override",
-      "gridPos": {"x": 0, "y": 16, "w": 12, "h": 8},
-      "targets": [
-        {"expr": "sum(rate(sanctions_present_total{job=\"$job\"}[5m]))", "legendFormat": "present"},
-        {"expr": "sum(rate(sanctions_override_total{job=\"$job\"}[5m]))", "legendFormat": "override"}
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Decisions by label",
-      "gridPos": {"x": 12, "y": 16, "w": 12, "h": 8},
-      "targets": [
-        {"expr": "sum by (label) (rate(pred_total{job=\"$job\"}[5m]))", "legendFormat": "{{label}}"}
-      ]
-    }
-  ]
+﻿{
+    "title":  "KYC Risk API",
+    "uid":  "kyc-api",
+    "timezone":  "browser",
+    "schemaVersion":  38,
+    "version":  1,
+    "refresh":  "10s",
+    "time":  {
+                 "from":  "now-6h",
+                 "to":  "now"
+             },
+    "templating":  {
+                       "list":  [
+                                    {
+                                        "name":  "job",
+                                        "type":  "query",
+                                        "datasource":  "Prometheus",
+                                        "query":  "label_values(request_latency_seconds_bucket, job)",
+                                        "refresh":  1,
+                                        "current":  {
+                                                        "text":  "kyc-api",
+                                                        "value":  "kyc-api"
+                                                    }
+                                    }
+                                ]
+                   },
+    "panels":  [
+                   {
+                       "type":  "timeseries",
+                       "title":  "p50 / p95 / p99 latency (s)",
+                       "gridPos":  {
+                                       "x":  0,
+                                       "y":  0,
+                                       "w":  12,
+                                       "h":  8
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "histogram_quantile(0.50, sum by (le) (rate(request_latency_seconds_bucket{job=\"$job\"}[5m])))",
+                                           "legendFormat":  "p50"
+                                       },
+                                       {
+                                           "expr":  "histogram_quantile(0.95, sum by (le) (rate(request_latency_seconds_bucket{job=\"$job\"}[5m])))",
+                                           "legendFormat":  "p95"
+                                       },
+                                       {
+                                           "expr":  "histogram_quantile(0.99, sum by (le) (rate(request_latency_seconds_bucket{job=\"$job\"}[5m])))",
+                                           "legendFormat":  "p99"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "timeseries",
+                       "title":  "QPS (decisions/sec)",
+                       "gridPos":  {
+                                       "x":  12,
+                                       "y":  0,
+                                       "w":  12,
+                                       "h":  8
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum(rate(decisions_total{job=\"$job\"}[5m]))",
+                                           "legendFormat":  "decisions"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "timeseries",
+                       "title":  "Error rate",
+                       "gridPos":  {
+                                       "x":  0,
+                                       "y":  8,
+                                       "w":  12,
+                                       "h":  8
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "100 * (sum(rate(http_requests_total{job=\\\"$job\\\",status!~\\\"2..\\\"}[5m])) / sum(rate(http_requests_total{job=\\\"$job\\\"}[5m])))",
+                                           "legendFormat":  "error %"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "timeseries",
+                       "title":  "Auto-clear %",
+                       "gridPos":  {
+                                       "x":  12,
+                                       "y":  8,
+                                       "w":  12,
+                                       "h":  8
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "100 * (sum(rate(autoclear_low_total{job=\\\"$job\\\"}[5m])) / sum(rate(decisions_total{job=\\\"$job\\\"}[5m])))",
+                                           "legendFormat":  "auto-clear %"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "timeseries",
+                       "title":  "Sanctions: present vs override",
+                       "gridPos":  {
+                                       "x":  0,
+                                       "y":  16,
+                                       "w":  12,
+                                       "h":  8
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum(rate(sanctions_present_total{job=\"$job\"}[5m]))",
+                                           "legendFormat":  "present"
+                                       },
+                                       {
+                                           "expr":  "sum(rate(sanctions_override_total{job=\"$job\"}[5m]))",
+                                           "legendFormat":  "override"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "timeseries",
+                       "title":  "Decisions by label",
+                       "gridPos":  {
+                                       "x":  12,
+                                       "y":  16,
+                                       "w":  12,
+                                       "h":  8
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (label) (rate(pred_total{job=\"$job\"}[5m]))",
+                                           "legendFormat":  "{{label}}"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "timeseries",
+                       "title":  "Audit lines/sec",
+                       "gridPos":  {
+                                       "x":  0,
+                                       "y":  24,
+                                       "w":  12,
+                                       "h":  8
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum(rate(audited_total{job=\"$job\"}[5m]))",
+                                           "legendFormat":  "audited"
+                                       }
+                                   ]
+                   },
+                   {
+                       "type":  "timeseries",
+                       "title":  "Redactions/sec by type",
+                       "gridPos":  {
+                                       "x":  12,
+                                       "y":  24,
+                                       "w":  12,
+                                       "h":  8
+                                   },
+                       "targets":  [
+                                       {
+                                           "expr":  "sum by (type) (rate(redactions_applied{job=\"$job\"}[5m]))",
+                                           "legendFormat":  "{{type}}"
+                                       }
+                                   ]
+                   }
+               ]
 }
 

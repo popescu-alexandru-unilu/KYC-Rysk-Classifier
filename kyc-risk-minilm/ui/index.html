@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -26,7 +26,13 @@
         <button class="chip warning" data-sample="fatf">FATF High-Risk</button>
       </div>
 
-      <textarea id="evidence" rows="12" placeholder="[KYC] Name: …&#10;[COUNTRY] …&#10;[SANCTIONS] list=…&#10;[MEDIA] …"></textarea>
+      <div class="evidence-wrap" id="evidence-wrap">
+        <textarea id="evidence" rows="12" placeholder="[KYC] Name: …&#10;[COUNTRY] …&#10;[SANCTIONS] list=…&#10;[MEDIA] …"></textarea>
+        <input type="file" id="file-upload" accept=".txt,.jsonl" />
+        <label for="file-upload" class="upload-trigger small">Upload .txt or .jsonl</label>
+      </div>
+      <small class="muted tiny">.txt fills the box • .jsonl runs batch</small>
+      <p id="file-status" class="tiny" aria-live="polite"></p>
 
       <label class="switcher">
         <input type="checkbox" id="override" checked />
@@ -48,6 +54,7 @@
       <div class="result-header">
         <span id="badge" class="badge">LOW</span>
         <span id="band" class="chip" title="Policy bands: low>=0.70, high>=0.80">BAND: LOW</span>
+        <span id="override-chip" class="chip danger small" hidden>Policy override</span>
         <div>
           <h3 id="label">LOW RISK</h3>
           <small id="meta" class="muted">—</small>
@@ -69,35 +76,56 @@
         <h4>Why</h4>
         <ul id="reasons" class="reasons"></ul>
       </div>
-
+      
       <div>
         <small id="policy-meta" class="tiny muted"></small>
       </div>
     </section>
 
-    <!-- AUDIT SEARCH -->
+    <!-- SMART AUDIT SEARCH -->
     <section class="card">
       <h2>Audit Search</h2>
-      <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:.5rem;align-items:end;">
-        <div><label>Label</label><input id="s-label" placeholder="low|medium|high" /></div>
-        <div><label>Rule</label><input id="s-rule" placeholder="model_only|sanctions_override" /></div>
-        <div><label>Band</label><input id="s-band" placeholder="low|medium|high" /></div>
-        <div><label>Country</label><input id="s-country" placeholder="DE" /></div>
-        <div><label>Owner</label><input id="s-owner" placeholder="teamA" /></div>
-        <div><label>Lang</label><input id="s-lang" placeholder="en" /></div>
+      <div style="display:flex; gap:.5rem; align-items:center; flex-wrap:wrap;">
+        <div class="typeahead" style="position:relative; flex:1;">
+          <input id="s-q" type="text"
+                 placeholder="Search logs… try: label:high rule:sanctions country:DE" />
+          <div id="s-suggestions"
+               style="display:none; position:absolute; top:100%; left:0; right:0;
+                      background:var(--card-bg,#12122b); border:1px solid #334;
+                      border-radius:6px; max-height:200px; overflow:auto; z-index:10;">
+          </div>
+        </div>
+        <select id="s-limit">
+          <option value="50">Limit: 50</option>
+          <option value="100" selected>100</option>
+          <option value="500">500</option>
+          <option value="1000">1000</option>
+        </select>
+        <button id="s-run" class="primary">Search</button>
+        <button id="s-export" class="secondary outline">Export CSV</button>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.5rem;align-items:end;margin-top:.5rem;">
-        <div><label>Since</label><input id="s-since" placeholder="2025-01-01T00:00:00" /></div>
-        <div><label>Until</label><input id="s-until" placeholder="2025-12-31T23:59:59" /></div>
-        <div><label>Limit</label><input id="s-limit" type="number" value="50" min="1" max="500" /></div>
-        <div><button id="s-run" class="primary">Search</button></div>
-      </div>
+      <div id="s-chips" style="margin-top:.5rem;"></div> <!-- For active filter chips -->
+      <details style="margin-top:.5rem;">
+        <summary>Advanced Filters</summary>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem;align-items:end;">
+          <label>Add Filter: <select id="s-filter-field">
+            <option value="label">Label</option>
+            <option value="rule">Rule</option>
+            <option value="band">Band</option>
+            <option value="country">Country</option>
+            <option value="owner">Owner</option>
+            <option value="lang">Lang</option>
+          </select></label>
+          <input id="s-filter-value" placeholder="value or comparator (e.g., >0.9)" />
+          <button id="s-add-filter" class="small secondary">Add</button>
+        </div>
+      </details>
       <div id="s-error" class="error tiny" hidden>—</div>
       <div id="s-results" class="mt-xl tiny"></div>
     </section>
   </main>
 
   <script src="./config.js"></script>
-  <script src="./app.js"></script>
+  <script src="./app.js?v=5"></script>
 </body>
 </html>
