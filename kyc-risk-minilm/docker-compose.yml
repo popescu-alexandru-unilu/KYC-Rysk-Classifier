@@ -17,12 +17,10 @@ services:
       retries: 5
 
   ui:
-    build: ./ui
-    depends_on:
-      api:
-        condition: service_healthy
-    ports: ["3000:80"]
+    image: nginx:alpine
+    ports:
+      - "3000:80"
     volumes:
-      - ./ui/config.js:/usr/share/nginx/html/config.js:ro
+      - ./ui:/usr/share/nginx/html:ro   # live-mount your files
 
   # optional: nginx reverse proxy + TLS (bring your certs or use Caddy)

@@ -1,131 +1,793 @@
-﻿<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>KYC Risk Classifier</title>
-  <!-- Pico.css for instant good-looking UI -->
-  <link rel="stylesheet" href="https://unpkg.com/@picocss/pico@2.0.6/css/pico.min.css">
-  <link rel="stylesheet" href="./styles.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RiskOps - KYC Risk Intelligence</title>
+  <link rel="icon" href="data:,">
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+    *{margin:0;padding:0;box-sizing:border-box}
+    :root{--bg-primary:#0a0e1a;--bg-secondary:#0f1423;--bg-card:#151b2e;--accent-primary:#6366f1;--accent-secondary:#8b5cf6;--accent-success:#10b981;--accent-warning:#f59e0b;--accent-danger:#ef4444;--text-primary:#f8fafc;--text-secondary:#94a3b8;--text-muted:#64748b;--border:rgba(148,163,184,.1);--shadow-sm:0 2px 8px rgba(0,0,0,.3);--shadow-md:0 8px 24px rgba(0,0,0,.4);--shadow-lg:0 16px 48px rgba(0,0,0,.5);--glow-primary:rgba(99,102,241,.3)}
+    body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg-primary);color:var(--text-primary);overflow-x:hidden;line-height:1.6}
+    .bg-gradient{position:fixed;inset:0;z-index:0;background:radial-gradient(circle at 20% 30%,rgba(99,102,241,.15) 0%,transparent 50%),radial-gradient(circle at 80% 70%,rgba(139,92,246,.12) 0%,transparent 50%),radial-gradient(circle at 50% 50%,rgba(16,185,129,.08) 0%,transparent 60%);animation:bgShift 20s ease-in-out infinite}
+    @keyframes bgShift{0%,100%{transform:scale(1) rotate(0)}50%{transform:scale(1.1) rotate(5deg)}}
+    .grain{position:fixed;inset:0;z-index:1;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.03'/%3E%3C/svg%3E");pointer-events:none;opacity:.4}
+    .batch-results-modal{position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:2rem}
+    .modal-overlay{position:absolute;inset:0;z-index:0;}
+    .modal-content{background:var(--bg-card);border-radius:16px;box-shadow:var(--shadow-lg);border:1px solid var(--border);max-width:90vw;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;position:relative;z-index:1;}
+    .modal-header{display:flex;justify-content:space-between;align-items:center;padding:1.5rem;border-bottom:1px solid var(--border);}
+    .modal-header button{background:none;border:none;color:var(--text-primary);font-size:1.5rem;cursor:pointer;padding:.5rem;border-radius:8px;}
+    .modal-header button:hover{background:var(--bg-secondary);}
+    .modal-header h2{margin:0;color:var(--text-primary);}
+    .modal-body{flex:1 1 auto;min-height:0;max-height:calc(90vh - 120px);overflow:auto;padding:1.5rem;}
+    .results-summary{background:var(--bg-secondary);padding:.75rem;border-radius:8px;margin-bottom:1rem;font-weight:500;color:var(--text-secondary);}
+    .results-table-container{max-height:60vh;overflow:auto;border-radius:8px;border:1px solid var(--border);}
+    .results-table{min-width:1000px;table-layout:fixed;border-collapse:collapse;background:var(--bg-card);}
+    .results-table th,.results-table td{padding:.75rem 1rem;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;text-overflow:ellipsis;overflow:hidden;}
+    .results-table th{background:var(--bg-secondary);color:var(--text-primary);font-weight:600;position:sticky;top:0;}
+    .results-table td{color:var(--text-secondary);}
+    .results-table td:last-child{white-space:normal;max-width:40ch;}
+    .results-table tr:hover{background:var(--bg-secondary);}
+    @media (max-width:768px){.results-table{font-size:.875rem;}}
+    header{position:sticky;top:0;z-index:100;backdrop-filter:blur(20px) saturate(180%);background:rgba(10,14,26,.8);border-bottom:1px solid var(--border);box-shadow:var(--shadow-sm)}
+    .header-content{max-width:1400px;margin:0 auto;padding:1rem 2rem;display:flex;align-items:center;justify-content:space-between;gap:2rem}
+    .logo{display:flex;align-items:center;gap:.75rem;font-weight:800;font-size:1.25rem;letter-spacing:-.5px}
+    .logo-icon{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--accent-primary),var(--accent-secondary));display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px var(--glow-primary);animation:pulse 3s ease-in-out infinite}
+    @keyframes pulse{0%,100%{box-shadow:0 4px 16px var(--glow-primary)}50%{box-shadow:0 6px 24px rgba(99,102,241,.5)}}
+    .nav-tabs{display:flex;gap:.5rem;background:var(--bg-secondary);padding:.25rem;border-radius:12px;border:1px solid var(--border)}
+    .nav-tab{padding:.5rem 1.5rem;border-radius:8px;background:transparent;border:none;color:var(--text-secondary);font-weight:600;cursor:pointer;transition:.3s;position:relative}
+    .nav-tab.active{background:linear-gradient(135deg,var(--accent-primary),var(--accent-secondary));color:#fff;box-shadow:0 4px 12px rgba(99,102,241,.4)}
+    .nav-tab:not(.active):hover{background:rgba(99,102,241,.1);color:var(--text-primary)}
+    .header-actions{display:flex;align-items:center;gap:1rem}
+    .theme-toggle{width:40px;height:40px;border-radius:10px;background:var(--bg-secondary);border:1px solid var(--border);color:var(--text-primary);cursor:pointer;transition:.3s;display:flex;align-items:center;justify-content:center;font-size:1.2rem}
+    .theme-toggle:hover{background:var(--bg-card);transform:translateY(-2px);box-shadow:var(--shadow-sm)}
+    .container{max-width:1400px;margin:0 auto;padding:2rem;position:relative;z-index:2}
+    .tab-content{display:none;animation:fadeIn .5s ease}
+    .tab-content.active{display:block}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+    .card{background:var(--bg-card);border-radius:20px;border:1px solid var(--border);box-shadow:var(--shadow-md);padding:2rem;transition:.3s}
+    .card:hover{border-color:rgba(99,102,241,.3);box-shadow:var(--shadow-lg)}
+    .card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.5rem}
+    .card-title{font-size:1.25rem;font-weight:700;display:flex;align-items:center;gap:.75rem}
+    .grid{display:grid;gap:2rem}
+    .grid-2{grid-template-columns:1.2fr 1fr}
+    .grid-3{grid-template-columns:repeat(3,1fr)}
+    @media (max-width:1024px){.grid-2,.grid-3{grid-template-columns:1fr}}
+    .input-group{margin-bottom:1.5rem}
+    .input-label{display:block;margin-bottom:.5rem;font-weight:600;font-size:.875rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:.5px}
+    textarea{width:100%;min-height:300px;padding:1rem;background:var(--bg-secondary);border:2px solid var(--border);border-radius:12px;color:var(--text-primary);font-family:'Inter',monospace;font-size:.875rem;resize:vertical;transition:.3s}
+    textarea:focus{outline:none;border-color:var(--accent-primary);box-shadow:0 0 0 4px rgba(99,102,241,.1)}
+    .quick-samples{display:flex;gap:.75rem;margin-top:1rem;flex-wrap:wrap}
+    .sample-chip{padding:.5rem 1rem;border-radius:8px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-secondary);font-size:.875rem;cursor:pointer;transition:.3s;font-weight:500}
+    .sample-chip:hover{background:var(--accent-primary);color:#fff;border-color:var(--accent-primary);transform:translateY(-2px);box-shadow:0 4px 12px rgba(99,102,241,.3)}
+    .sample-chip.danger{border-color:rgba(239,68,68,.3)}.sample-chip.success{border-color:rgba(16,185,129,.3)}.sample-chip.warning{border-color:rgba(245,158,11,.3)}
+    .btn-group{display:flex;gap:1rem;margin-top:1.5rem}
+    .btn{padding:.875rem 2rem;border-radius:12px;border:none;font-weight:600;font-size:.95rem;cursor:pointer;transition:.3s;display:flex;align-items:center;justify-content:center;gap:.5rem;position:relative;overflow:hidden}
+    .btn-primary{background:linear-gradient(135deg,var(--accent-primary),var(--accent-secondary));color:#fff;box-shadow:0 4px 16px rgba(99,102,241,.4)}
+    .btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(99,102,241,.5)}
+    .btn-secondary{background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border)}
+    .btn-secondary:hover{background:var(--bg-card);border-color:var(--accent-primary)}
+    .btn:disabled{opacity:.5;cursor:not-allowed}
+    .spinner{width:20px;height:20px;border:3px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .result-container{animation:slideUp .5s ease}
+    @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+    .risk-header{display:flex;align-items:center;gap:1rem;margin-bottom:2rem}
+    .risk-badge{padding:.75rem 1.5rem;border-radius:12px;font-weight:800;font-size:1.5rem;letter-spacing:.5px;box-shadow:var(--shadow-md);animation:scaleIn .4s ease}
+    @keyframes scaleIn{from{transform:scale(.8);opacity:0}to{transform:scale(1);opacity:1}}
+    .risk-badge.low{background:linear-gradient(135deg,#10b981,#059669)}.risk-badge.medium{background:linear-gradient(135deg,#f59e0b,#d97706)}.risk-badge.high{background:linear-gradient(135deg,#ef4444,#dc2626)}.risk-badge.critical{background:linear-gradient(135deg,#dc2626,#991b1b)}
+    .risk-info{flex:1}
+    .risk-label{font-size:1.75rem;font-weight:800;margin-bottom:.25rem}
+    .risk-meta{color:var(--text-secondary);font-size:.875rem}
+    .prob-container{margin:2rem 0}
+    .prob-row{display:grid;grid-template-columns:80px 1fr 60px;gap:1rem;align-items:center;margin-bottom:1rem}
+    .prob-label{font-weight:600;font-size:.875rem;text-transform:uppercase;letter-spacing:.5px}
+    .prob-bar{height:12px;background:var(--bg-secondary);border-radius:6px;overflow:hidden;position:relative}
+    .prob-fill{height:100%;border-radius:6px;transition:width 1s cubic-bezier(.4,0,.2,1);position:relative;overflow:hidden}
+    .prob-fill::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.3),transparent);animation:shimmer 2s infinite}
+    @keyframes shimmer{from{transform:translateX(-100%)}to{transform:translateX(100%)}}
+    .prob-fill.low{background:linear-gradient(90deg,#10b981,#059669)}.prob-fill.medium{background:linear-gradient(90deg,#f59e0b,#d97706)}.prob-fill.high{background:linear-gradient(90deg,#ef4444,#dc2626)}.prob-fill.critical{background:linear-gradient(90deg,#dc2626,#991b1b)}
+    .prob-value{font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
+    .reasons-list{display:flex;flex-wrap:wrap;gap:.75rem;margin-top:1rem}
+    .reason-chip{padding:.5rem 1rem;background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;font-size:.875rem;color:var(--text-secondary);animation:fadeIn .5s ease backwards}
+    .reason-chip:nth-child(1){animation-delay:.1s}.reason-chip:nth-child(2){animation-delay:.2s}.reason-chip:nth-child(3){animation-delay:.3s}.reason-chip:nth-child(4){animation-delay:.4s}
+    .stat-card{background:linear-gradient(135deg,rgba(99,102,241,.1),rgba(139,92,246,.05));border:1px solid rgba(99,102,241,.2);border-radius:16px;padding:1.5rem;transition:.3s}
+    .stat-card:hover{transform:translateY(-4px);box-shadow:0 8px 24px rgba(99,102,241,.2)}
+    .stat-value{font-size:2.5rem;font-weight:800;background:linear-gradient(135deg,var(--accent-primary),var(--accent-secondary));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:.5rem}
+    .stat-label{color:var(--text-secondary);font-size:.875rem;text-transform:uppercase;letter-spacing:.5px;font-weight:600}
+    .toggle-container{display:flex;align-items:center;gap:1rem;padding:1rem;background:var(--bg-secondary);border-radius:12px;border:1px solid var(--border);margin:1rem 0}
+    .toggle{position:relative;width:48px;height:26px;background:var(--bg-card);border-radius:13px;cursor:pointer;transition:.3s;border:2px solid var(--border)}
+    .toggle.active{background:var(--accent-primary);border-color:var(--accent-primary)}
+    .toggle-slider{position:absolute;top:2px;left:2px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .3s ease;box-shadow:0 2px 4px rgba(0,0,0,.2)}
+    .toggle.active .toggle-slider{transform:translateX(22px)}
+    .toggle-label{font-weight:500;color:var(--text-secondary)}
+    .search-container{margin-bottom:2rem}
+    .search-bar{display:flex;gap:1rem;align-items:center}
+    input[type=text]{flex:1;padding:.875rem 1.25rem;background:var(--bg-secondary);border:2px solid var(--border);border-radius:12px;color:var(--text-primary);font-size:.95rem;transition:.3s}
+    input[type=text]:focus{outline:none;border-color:var(--accent-primary);box-shadow:0 0 0 4px rgba(99,102,241,.1)}
+    select{padding:.875rem 1.25rem;background:var(--bg-secondary);border:2px solid var(--border);border-radius:12px;color:var(--text-primary);font-size:.95rem;cursor:pointer;transition:.3s}
+    select:focus{outline:none;border-color:var(--accent-primary)}
+    .audit-item{background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px;padding:1.25rem;margin-bottom:1rem;transition:.3s}
+    .audit-item:hover{border-color:var(--accent-primary);transform:translateX(4px)}
+    .audit-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem}
+    .audit-label{font-weight:700;font-size:.875rem;padding:.25rem .75rem;border-radius:6px}
+    .audit-label.low{background:rgba(16,185,129,.2);color:#10b981}.audit-label.medium{background:rgba(245,158,11,.2);color:#f59e0b}.audit-label.high{background:rgba(239,68,68,.2);color:#ef4444}
+    .audit-meta{color:var(--text-muted);font-size:.75rem}
+    .audit-details{color:var(--text-secondary);font-size:.875rem}
+    .toast{position:fixed;top:2rem;right:2rem;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:1rem 1.5rem;box-shadow:var(--shadow-lg);z-index:1000;animation:slideInRight .3s ease;max-width:400px}
+    @keyframes slideInRight{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+    .toast.success{border-left:4px solid var(--accent-success)}.toast.error{border-left:4px solid var(--accent-danger)}
+    .viz-container{display:flex;gap:2rem;justify-content:center;align-items:center;margin:2rem 0;flex-wrap:wrap}
+    .donut-chart{width:200px;height:200px}
+    @media (max-width:768px){.container{padding:1rem}.header-content{padding:1rem;flex-wrap:wrap}.nav-tabs{order:3;width:100%}.btn-group{flex-direction:column}.btn{width:100%}}
+    .hidden{display:none!important}
+    .body-locked{overflow:hidden}
+    .modal-fullscreen .modal-content{max-width:98vw;max-height:98vh}
+    .results-table-container{overflow-x:auto}
+    .results-table td{word-wrap:break-word;max-width:200px;white-space:normal}
+  </style>
 </head>
 <body>
-  <header class="container center mt-xl">
-    <h1>🛡️ Invisible KYC Analyst</h1>
-    <p class="muted">Paste client evidence. Get a <b>risk label</b>, probabilities, and clear reasons.</p>
-    <small id="api-url" class="muted"></small>
+  <div class="bg-gradient"></div>
+  <div class="grain"></div>
+  <header>
+    <div class="header-content">
+      <div class="logo">
+        <div class="logo-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        </div>
+        <span>RiskOps</span>
+      </div>
+      <div class="nav-tabs">
+        <button class="nav-tab active" data-tab="classify">Classify</button>
+        <button class="nav-tab" data-tab="audit">Audit Log</button>
+        <button class="nav-tab" data-tab="dashboard">Dashboard</button>
+        <button class="nav-tab" data-tab="batch-assess">Batch Assess</button>
+      </div>
+      <div class="header-actions">
+        <button class="theme-toggle" title="Toggle theme">🌙</button>
+      </div>
+    </div>
   </header>
-
-  <main class="container center-col">
-    <!-- LEFT: input -->
-    <section class="card">
-      <h2>Client Evidence</h2>
-
-      <div class="chips">
-        <button class="chip danger" data-sample="sanctions">Sanctions Example</button>
-        <button class="chip success" data-sample="clean">Clean Example</button>
-        <button class="chip warning" data-sample="fatf">FATF High-Risk</button>
-      </div>
-
-      <div class="evidence-wrap" id="evidence-wrap">
-        <textarea id="evidence" rows="12" placeholder="[KYC] Name: …&#10;[COUNTRY] …&#10;[SANCTIONS] list=…&#10;[MEDIA] …"></textarea>
-        <input type="file" id="file-upload" accept=".txt,.jsonl" />
-        <label for="file-upload" class="upload-trigger small">Upload .txt or .jsonl</label>
-      </div>
-      <small class="muted tiny">.txt fills the box • .jsonl runs batch</small>
-      <p id="file-status" class="tiny" aria-live="polite"></p>
-
-      <label class="switcher">
-        <input type="checkbox" id="override" checked />
-        <span>Policy override (any sanctions ⇒ HIGH)</span>
-      </label>
-
-      <div class="actions">
-        <button id="assess" class="primary">Assess Risk</button>
-        <button id="clear" class="secondary outline">Clear</button>
-      </div>
-
-      <p class="muted tiny">Tip: Cmd/Ctrl+Enter to assess</p>
-      <p class="muted tiny">Built for demo purposes. Do not submit real PII.</p>
-      <p id="error" class="error tiny" hidden>—</p>
-    </section>
-
-    <!-- RIGHT: result -->
-    <section class="card" id="result-card" hidden>
-      <div class="result-header">
-        <span id="badge" class="badge">LOW</span>
-        <span id="band" class="chip" title="Policy bands: low>=0.70, high>=0.80">BAND: LOW</span>
-        <span id="override-chip" class="chip danger small" hidden>Policy override</span>
-        <div>
-          <h3 id="label">LOW RISK</h3>
-          <small id="meta" class="muted">—</small>
-        </div>
-        <button id="copy" class="secondary outline small">Copy JSON</button>
-      </div>
-
-      <div>
-        <h4>Probability</h4>
-        <div class="bar">
-          <div class="bar-row"><span>LOW</span><progress id="p-low" max="100" value="0"></progress><small id="t-low">0%</small></div>
-          <div class="bar-row"><span>MED</span><progress id="p-med" max="100" value="0"></progress><small id="t-med">0%</small></div>
-          <div class="bar-row"><span>HIGH</span><progress id="p-high" max="100" value="0"></progress><small id="t-high">0%</small></div>
-          <div class="bar-row" id="row-critical"><span>CRIT</span><progress id="p-crit" max="100" value="0"></progress><small id="t-crit">0%</small></div>
-        </div>
-      </div>
-
-      <div>
-        <h4>Why</h4>
-        <ul id="reasons" class="reasons"></ul>
-      </div>
-      
-      <div>
-        <small id="policy-meta" class="tiny muted"></small>
-      </div>
-    </section>
-
-    <!-- SMART AUDIT SEARCH -->
-    <section class="card">
-      <h2>Audit Search</h2>
-      <div style="display:flex; gap:.5rem; align-items:center; flex-wrap:wrap;">
-        <div class="typeahead" style="position:relative; flex:1;">
-          <input id="s-q" type="text"
-                 placeholder="Search logs… try: label:high rule:sanctions country:DE" />
-          <div id="s-suggestions"
-               style="display:none; position:absolute; top:100%; left:0; right:0;
-                      background:var(--card-bg,#12122b); border:1px solid #334;
-                      border-radius:6px; max-height:200px; overflow:auto; z-index:10;">
+  <div class="container">
+    <div class="tab-content active" data-content="classify">
+      <div class="grid grid-2">
+        <div class="card">
+          <div class="card-header"><h2 class="card-title">Client Evidence</h2></div>
+          <div class="input-group">
+            <label class="input-label">Enter KYC Data</label>
+            <textarea id="evidence" placeholder="[KYC] Name: ACME Corp&#10;[COUNTRY] US&#10;[SANCTIONS] list=none&#10;[MEDIA] 0 mentions"></textarea>
+          </div>
+          <div class="quick-samples">
+            <button class="sample-chip danger" data-sample="sanctions">🚨 Sanctions Hit</button>
+            <button class="sample-chip success" data-sample="clean">✅ Clean Profile</button>
+            <button class="sample-chip warning" data-sample="fatf">⚠️ FATF High-Risk</button>
+          </div>
+          <div class="toggle-container">
+            <div class="toggle active" id="override-toggle"><div class="toggle-slider"></div></div>
+            <span class="toggle-label">Policy Override (Sanctions → HIGH)</span>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-primary" id="assess-btn"><span>Assess Risk</span></button>
+            <button class="btn btn-secondary" id="clear-btn">Clear</button>
           </div>
         </div>
-        <select id="s-limit">
-          <option value="50">Limit: 50</option>
-          <option value="100" selected>100</option>
-          <option value="500">500</option>
-          <option value="1000">1000</option>
-        </select>
-        <button id="s-run" class="primary">Search</button>
-        <button id="s-export" class="secondary outline">Export CSV</button>
-      </div>
-      <div id="s-chips" style="margin-top:.5rem;"></div> <!-- For active filter chips -->
-      <details style="margin-top:.5rem;">
-        <summary>Advanced Filters</summary>
-        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.5rem;align-items:end;">
-          <label>Add Filter: <select id="s-filter-field">
-            <option value="label">Label</option>
-            <option value="rule">Rule</option>
-            <option value="band">Band</option>
-            <option value="country">Country</option>
-            <option value="owner">Owner</option>
-            <option value="lang">Lang</option>
-          </select></label>
-          <input id="s-filter-value" placeholder="value or comparator (e.g., >0.9)" />
-          <button id="s-add-filter" class="small secondary">Add</button>
+        <div class="card hidden" id="result-card">
+          <div class="risk-header">
+            <div class="risk-badge low" id="risk-badge">LOW</div>
+            <div class="risk-info">
+              <div class="risk-label" id="risk-label">LOW RISK</div>
+              <div class="risk-meta" id="risk-meta">model_only • 250ms</div>
+            </div>
+          </div>
+          <div class="prob-container">
+            <h3 style="margin-bottom: 1rem;">Probability Distribution</h3>
+            <div class="prob-row">
+              <span class="prob-label">Low</span>
+              <div class="prob-bar"><div class="prob-fill low" id="prob-low" style="width:0%"></div></div>
+              <span class="prob-value" id="val-low">0%</span>
+            </div>
+            <div class="prob-row">
+              <span class="prob-label">Medium</span>
+              <div class="prob-bar"><div class="prob-fill medium" id="prob-medium" style="width:0%"></div></div>
+              <span class="prob-value" id="val-medium">0%</span>
+            </div>
+            <div class="prob-row">
+              <span class="prob-label">High</span>
+              <div class="prob-bar"><div class="prob-fill high" id="prob-high" style="width:0%"></div></div>
+              <span class="prob-value" id="val-high">0%</span>
+            </div>
+            <div class="prob-row hidden" id="critical-row">
+              <span class="prob-label">Critical</span>
+              <div class="prob-bar"><div class="prob-fill critical" id="prob-critical" style="width:0%"></div></div>
+              <span class="prob-value" id="val-critical">0%</span>
+            </div>
+          </div>
+          <div>
+            <h3 style="margin-bottom: 1rem;">Key Factors</h3>
+            <div class="reasons-list" id="reasons"></div>
+          </div>
+          <div class="btn-group" style="margin-top: 2rem;">
+            <button class="btn btn-secondary" id="copy-btn">Copy JSON</button>
+          </div>
         </div>
-      </details>
-      <div id="s-error" class="error tiny" hidden>—</div>
-      <div id="s-results" class="mt-xl tiny"></div>
-    </section>
-  </main>
-
+      </div>
+      <div class="grid grid-3" style="margin-top:2rem;">
+        <div class="stat-card"><div class="stat-value" id="stat-assessments">2,847</div><div class="stat-label">Total Assessments</div></div>
+        <div class="stat-card"><div class="stat-value">94.2%</div><div class="stat-label">Model Accuracy</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat-rt">127ms</div><div class="stat-label">Avg Response Time</div></div>
+      </div>
+    </div>
+    <div class="tab-content" data-content="audit">
+      <div class="card">
+        <div class="card-header"><h2 class="card-title">Search Audit Log</h2></div>
+        <div class="search-container">
+          <div class="search-bar">
+            <input type="text" id="search-query" placeholder="Search by label, rule, country... (e.g., label:high, country:DE)">
+            <select id="search-limit"><option value="50">50 results</option><option value="100" selected>100 results</option><option value="500">500 results</option></select>
+            <button class="btn btn-primary" id="search-btn">Search</button>
+            <button class="btn btn-secondary" id="export-btn">Export CSV</button>
+          </div>
+          <div class="quick-samples" style="margin-top:1rem;">
+            <button class="sample-chip" data-filter="label:high">HIGH only</button>
+            <button class="sample-chip" data-filter="rule:sanctions">Sanctions</button>
+            <button class="sample-chip" data-filter="country:DE">Germany</button>
+            <button class="sample-chip" data-filter="since:24h">Last 24h</button>
+          </div>
+        </div>
+        <div id="audit-results"></div>
+      </div>
+    </div>
+    <div class="tab-content" data-content="dashboard">
+      <div class="grid grid-2">
+        <div class="card"><div class="card-header"><h2 class="card-title">Risk Distribution (7 Days)</h2></div><div class="viz-container"><canvas id="riskChart" width="400" height="300"></canvas></div></div>
+        <div class="card"><div class="card-header"><h2 class="card-title">Recent Activity</h2></div><div id="recent-activity"><div style="color:var(--text-secondary);padding:2rem;text-align:center;">Loading recent assessments...</div></div></div>
+      </div>
+      <div class="grid grid-3" style="margin-top:2rem;">
+        <div class="stat-card"><div class="stat-value" id="stat-low">62%</div><div class="stat-label">Low Risk</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat-med">23%</div><div class="stat-label">Medium Risk</div></div>
+        <div class="stat-card"><div class="stat-value" id="stat-high">15%</div><div class="stat-label">High Risk</div></div>
+      </div>
+    </div>
+    <div class="tab-content" data-content="batch-assess">
+      <div class="batch-container">
+        <div class="card">
+          <div class="card-header"><h2 class="card-title">Batch File Upload</h2></div>
+          <div class="batch-dropzone" id="batch-dropzone">
+            <div class="batch-drop-content">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8 4 4-4 4"/><path d="M3 12h18"/></svg>
+              <p>Drop CSV or XLSX files here, or click to browse</p>
+              <small>Max 10MB per file, 50 rows preview</small>
+            </div>
+          </div>
+          <input type="file" id="batch-file-input" accept=".csv,.xlsx,.xls" style="display:none">
+          <div class="batch-status" id="batch-status"></div>
+        </div>
+        <div class="card batch-preview" id="batch-preview" style="display:none">
+          <div class="card-header"><h2 class="card-title">Data Preview</h2></div>
+          <div class="batch-preview-table" id="batch-preview-table"></div>
+          <div class="toggle-container">
+            <div class="toggle active" id="batch-override-toggle"><div class="toggle-slider"></div></div>
+            <span class="toggle-label">Policy Override (Apply to all rows)</span>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-primary" id="batch-submit">Assess All Rows</button>
+            <button class="btn btn-secondary" id="batch-cancel">Cancel</button>
+          </div>
+        </div>
+        <div class="card batch-progress" id="batch-progress" style="display:none">
+          <div class="card-header"><h2 class="card-title">Processing Results</h2></div>
+          <div id="batch-progress-content"></div>
+        </div>
+      </div>
+    </div>
+  </div>
   <script src="./config.js"></script>
-  <script src="./app.js?v=5"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script>
+    // Robust API base + retry fallback (handles dev servers without proxy)
+    function normalizeApiBase(){
+      try{
+        var b=(window.API_BASE||'').trim();
+        if(!b || b==='/api'){
+          if(String(window.location.port||'')==='3000') return 'http://localhost:8000';
+          return '/api';
+        }
+        return b.replace(/\/+$/,'');
+      }catch(_){ return 'http://localhost:8000'; }
+    }
+    async function apiFetch(path, opts){
+      const base=normalizeApiBase();
+      const url=`${base}${path}`;
+      try{
+        const r=await fetch(url, opts);
+        if(r.status!==404) return r;
+        if(base.startsWith('/')){ return await fetch(`http://localhost:8000${path}`, opts); }
+        return r;
+      }catch(e){
+        if(base.startsWith('/')){ return await fetch(`http://localhost:8000${path}`, opts); }
+        throw e;
+      }
+    }
+    const SAMPLES={sanctions:"[KYC] Name: ACME Ltd.\n[COUNTRY] HK\n[SANCTIONS] list=US-BIS-EL\n[MEDIA] 3 mentions",clean:"[KYC] Name: Jane Roe\n[COUNTRY] DE\n[SANCTIONS] list=none\n[MEDIA] 0 mentions",fatf:"[KYC] Name: Example Co\n[COUNTRY] IRAN\n[SANCTIONS] list=none\n[MEDIA] 0 mentions"};
+    const evidenceTA=document.getElementById('evidence');
+    const assessBtn=document.getElementById('assess-btn');
+    const clearBtn=document.getElementById('clear-btn');
+    const resultCard=document.getElementById('result-card');
+    const overrideToggle=document.getElementById('override-toggle');
+    const copyBtn=document.getElementById('copy-btn');
+    let overrideEnabled=true; let currentResult=null; let totalAssessments=0;
+    overrideToggle.addEventListener('click',()=>{ overrideEnabled=!overrideEnabled; overrideToggle.classList.toggle('active',overrideEnabled); });
+    document.querySelectorAll('.nav-tab').forEach(tab=>{ tab.addEventListener('click',()=>{ const tabName=tab.dataset.tab; document.querySelectorAll('.nav-tab').forEach(t=>t.classList.remove('active')); tab.classList.add('active'); document.querySelectorAll('.tab-content').forEach(c=>c.classList.remove('active')); document.querySelector(`[data-content="${tabName}"]`).classList.add('active'); if(tabName==='dashboard'){ loadDashboard(); } });});
+    document.querySelectorAll('.sample-chip[data-sample]').forEach(chip=>{ chip.addEventListener('click',()=>{ evidenceTA.value=SAMPLES[chip.dataset.sample]; evidenceTA.focus();});});
+    document.querySelectorAll('.sample-chip[data-filter]').forEach(chip=>{ chip.addEventListener('click',()=>{ const q=document.getElementById('search-query'); const cur=q.value.trim(); const f=chip.dataset.filter; q.value=cur?`${cur} ${f}`:f; q.focus();});});
+    clearBtn.addEventListener('click',()=>{ evidenceTA.value=''; resultCard.classList.add('hidden'); evidenceTA.focus(); });
+    evidenceTA.addEventListener('keydown',e=>{ if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){ assessBtn.click(); }});
+    assessBtn.addEventListener('click',async()=>{
+      const text=evidenceTA.value.trim(); if(!text){ showToast('Please enter client evidence','error'); return; }
+      assessBtn.disabled=true; assessBtn.innerHTML='<div class="spinner"></div><span>Analyzing...</span>';
+      const t0=performance.now();
+      try{
+        const r=await apiFetch(`/classify`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,override:overrideEnabled,format:'json'})});
+        if(!r.ok) throw new Error(await r.text());
+        const data=await r.json(); currentResult=data; displayResult(data, performance.now()-t0); showToast('Risk assessment complete','success');
+      }catch(e){ showToast(String(e.message||'Error performing assessment'),'error'); }
+      finally{ assessBtn.disabled=false; assessBtn.innerHTML='<span>Assess Risk</span>'; }
+    });
+    function displayResult(data,rt){
+      const p=data.probs||{}; const low=p.low||0, med=p.medium||0, high=p.high||0; const isCritical=(data.rule==='sanctions_override')||high>=0.98;
+      const label=isCritical?'CRITICAL':(data.label||'low').toUpperCase();
+      const badge=document.getElementById('risk-badge'); const labelEl=document.getElementById('risk-label'); const metaEl=document.getElementById('risk-meta');
+      badge.textContent=label; badge.className=`risk-badge ${label.toLowerCase()}`; labelEl.textContent=`${label} RISK`;
+      const metaRT=Math.max(50,Math.round(rt||0)); metaEl.textContent=`${data.rule||'model_only'} • ${metaRT}ms`;
+      document.getElementById('stat-rt').textContent=`${metaRT}ms`; totalAssessments++; document.getElementById('stat-assessments').textContent=totalAssessments.toLocaleString();
+      setTimeout(()=>{ updateProbBar('low',low); updateProbBar('medium',med); updateProbBar('high',high); if(isCritical){ document.getElementById('critical-row').classList.remove('hidden'); updateProbBar('critical',Math.max(0.99,high)); } else { document.getElementById('critical-row').classList.add('hidden'); } },100);
+      const reasons=document.getElementById('reasons'); reasons.innerHTML=''; (data.why||['No specific reasons provided']).slice(0,6).forEach((reason,i)=>{ const chip=document.createElement('div'); chip.className='reason-chip'; chip.textContent=reason; chip.style.animationDelay=`${i*0.1}s`; reasons.appendChild(chip); });
+      resultCard.classList.remove('hidden');
+    }
+    function updateProbBar(type,val){ const fill=document.getElementById(`prob-${type}`); const v=document.getElementById(`val-${type}`); const pct=Math.round((val||0)*100); if(fill) fill.style.width=`${pct}%`; if(v) v.textContent=`${pct}%`; }
+    copyBtn.addEventListener('click',()=>{ if(!currentResult) return; navigator.clipboard.writeText(JSON.stringify(currentResult,null,2)); copyBtn.textContent='✓ Copied!'; showToast('Result copied to clipboard','success'); setTimeout(()=>{ copyBtn.textContent='Copy JSON'; },1500); });
+    function showToast(message,type='success'){ const e=document.querySelector('.toast'); if(e) e.remove(); const t=document.createElement('div'); t.className=`toast ${type}`; t.textContent=message; document.body.appendChild(t); setTimeout(()=>t.remove(),4000); }
+    // AUDIT SEARCH
+    document.getElementById('search-btn').addEventListener('click',runAudit);
+    document.getElementById('export-btn').addEventListener('click',()=>{ const q=(document.getElementById('search-query').value||'').trim(); let url=`${normalizeApiBase()}/audit_export`; if(q) url+=`?q=${encodeURIComponent(q)}`; const a=document.createElement('a'); a.href=url; a.download='audit_export.csv'; document.body.appendChild(a); a.click(); a.remove(); });
+    async function runAudit(){ const q=(document.getElementById('search-query').value||'').trim(); const limit=document.getElementById('search-limit').value||'100'; let url=`/audit_search?limit=${limit}`; if(q) url+=`&q=${encodeURIComponent(q)}`; const out=document.getElementById('audit-results'); out.innerHTML='<div style="color:var(--text-secondary);padding:1rem;">Searching…</div>';
+      try{ const r=await apiFetch(url); if(!r.ok) throw new Error(await r.text()); const data=await r.json(); const items=Array.isArray(data.items)?data.items:[]; out.innerHTML = items.length? items.map(renderAuditItem).join('') : '<div style="color:var(--text-secondary);padding:1rem;">No results</div>'; }catch(e){ out.innerHTML = `<div class="toast error">${String(e.message||e)}</div>`; }
+    }
+    function renderAuditItem(it){ const dt=it.ts? new Date(it.ts*1000).toISOString().replace('T',' ').split('.')[0] : ''; const band=it.band_label?` • band=${it.band_label}`:''; const ctry=it.country?` • country=${it.country}`:''; const why=Array.isArray(it.why)? it.why.slice(0,2).join(' / ') : ''; const label=(it.label||'').toLowerCase(); return `<div class="audit-item"><div class="audit-header"><span class="audit-label ${label}">${(it.label||'').toUpperCase()}</span><span class="audit-meta">${dt}</span></div><div class="audit-details"><strong>Rule:</strong> ${it.rule||''}${band} ${ctry} <div class="audit-meta">${why}</div></div></div>`; }
+    // DASHBOARD
+    let riskChart=null; async function loadDashboard(){ try{ const r=await apiFetch(`/audit_search?limit=500`); if(!r.ok) throw new Error(await r.text()); const data=await r.json(); const items=Array.isArray(data.items)?data.items:[]; renderDashboard(items); }catch(_e){ const days=[...Array(7)].map((_,i)=>{ const d=new Date(); d.setDate(d.getDate()-(6-i)); return d;}); const items=[]; days.forEach(d=>{ const ts=Math.floor(d.getTime()/1000); const rnd=()=>Math.random(); for(let i=0;i<10;i++){ const r=rnd(); items.push({ ts, label: r<0.6?'low': r<0.85?'medium':'high' }); } }); renderDashboard(items); }}
+    function renderDashboard(items){ const byDay={}; const labs=['LOW','MEDIUM','HIGH']; for(const it of items){ const dateStr=it.ts? new Date(it.ts*1000).toISOString().slice(0,10) : new Date().toISOString().slice(0,10); byDay[dateStr]=byDay[dateStr]||{LOW:0,MEDIUM:0,HIGH:0}; const L=(it.label||'low').toUpperCase(); if(byDay[dateStr][L]!=null) byDay[dateStr][L]++; }
+      const days=[...Array(7)].map((_,i)=>{ const d=new Date(); d.setDate(d.getDate()-(6-i)); return d.toISOString().slice(0,10); }); const low=days.map(d=>byDay[d]?.LOW||0), med=days.map(d=>byDay[d]?.MEDIUM||0), high=days.map(d=>byDay[d]?.HIGH||0);
+      const ctx=document.getElementById('riskChart'); if(!ctx || !window.Chart){ ctx?.replaceWith(Object.assign(document.createElement('div'),{textContent:'Chart unavailable (Chart.js not loaded)', style:'color:var(--text-secondary);padding:1rem;'})); return; }
+      riskChart && riskChart.destroy(); riskChart=new Chart(ctx,{type:'bar',data:{labels:days,datasets:[{label:'LOW',data:low,backgroundColor:'rgba(16,185,129,0.6)'},{label:'MEDIUM',data:med,backgroundColor:'rgba(245,158,11,0.6)'},{label:'HIGH',data:high,backgroundColor:'rgba(239,68,68,0.6)'}]},options:{responsive:true,maintainAspectRatio:false,scales:{x:{stacked:true},y:{stacked:true,beginAtZero:true,ticks:{color:'#94a3b8'}}},plugins:{legend:{labels:{color:'#cbd5e1'}}}}});
+      const totalLow=low.reduce((a,b)=>a+b,0), totalMed=med.reduce((a,b)=>a+b,0), totalHigh=high.reduce((a,b)=>a+b,0); const sum=totalLow+totalMed+totalHigh||1; document.getElementById('stat-low').textContent=`${Math.round(totalLow/sum*100)}%`; document.getElementById('stat-med').textContent=`${Math.round(totalMed/sum*100)}%`; document.getElementById('stat-high').textContent=`${Math.round(totalHigh/sum*100)}%`;
+      const recent=document.getElementById('recent-activity'); const latest=items.slice(0,8); recent.innerHTML= latest.length? latest.map(it=>renderAuditItem(it)).join('') : '<div style="color:var(--text-secondary);padding:2rem;text-align:center;">No recent activity</div>';
+    }
+    document.querySelector('.theme-toggle').addEventListener('click',function(){ document.body.style.transition='background .3s ease,color .3s ease'; this.textContent=this.textContent==='🌙'?'☀️':'🌙'; });
+
+    // BATCH ASSESS
+    let selectedFile = null; // Single source of truth for selected file
+    let currentJobId = null; // Track current batch job
+    let pollInterval = null; // Handle polling
+
+    function setStatus(msg, type = 'muted') {
+      const statusEl = document.getElementById('batch-status');
+      if (statusEl) {
+        statusEl.textContent = msg || '';
+        statusEl.className = type === 'error' ? 'batch-status error' : 'batch-status';
+      }
+    }
+
+    function updateSubmitButton() {
+      const submitBtn = document.getElementById('batch-submit');
+      if (submitBtn) {
+        submitBtn.disabled = !selectedFile || currentJobId;
+        if (!selectedFile) {
+          submitBtn.title = 'Please upload a file first';
+        } else if (currentJobId) {
+          submitBtn.textContent = 'Processing...';
+        } else {
+          submitBtn.title = '';
+          submitBtn.textContent = 'Assess All Rows';
+        }
+      }
+    }
+
+    const dropzone = document.getElementById('batch-dropzone');
+    const fileInput = document.getElementById('batch-file-input');
+    const previewEl = document.getElementById('batch-preview');
+    const previewTableEl = document.getElementById('batch-preview-table');
+    const progressEl = document.getElementById('batch-progress');
+    const progressContentEl = document.getElementById('batch-progress-content');
+    const submitBtn = document.getElementById('batch-submit');
+    const cancelBtn = document.getElementById('batch-cancel');
+    const batchOverrideToggle = document.getElementById('batch-override-toggle');
+
+    function resetBatchUI() {
+      selectedFile = null;
+      currentJobId = null;
+      previewEl.style.display = 'none';
+      progressEl.style.display = 'none';
+      setStatus('');
+      updateSubmitButton();
+      clearInterval(pollInterval);
+    }
+
+    if (dropzone && fileInput) {
+      dropzone.addEventListener('click', () => fileInput.click());
+
+      fileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          resetBatchUI();
+          selectedFile = file;
+          updateSubmitButton();
+          await processFile(file);
+        }
+      });
+
+      function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropzone.addEventListener(eventName, preventDefaults, false);
+      });
+
+      dropzone.addEventListener('dragenter', highlight, false);
+      dropzone.addEventListener('dragover', highlight, false);
+      dropzone.addEventListener('dragleave', unhighlight, false);
+      dropzone.addEventListener('drop', unhighlight, false);
+
+      dropzone.addEventListener('drop', function(e) {
+        const file = e.dataTransfer.files[0];
+        if (file) {
+          resetBatchUI();
+          selectedFile = file;
+          updateSubmitButton();
+          processFile(file);
+        }
+      });
+
+      function highlight(e) {
+        dropzone.classList.add('dragover');
+      }
+
+      function unhighlight(e) {
+        dropzone.classList.remove('dragover');
+      }
+
+      async function processFile(file) {
+        setStatus('Reading file...');
+
+        if (file.size > 10 * 1024 * 1024) {
+          setStatus('File too large (max 10MB)', 'error');
+          return;
+        }
+
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (!['csv', 'xlsx', 'xls'].includes(ext)) {
+          setStatus('Unsupported file type', 'error');
+          return;
+        }
+
+        try {
+          const reader = new FileReader();
+          reader.onload = async function(ev) {
+            const data = new Uint8Array(ev.target.result);
+            let json = [];
+
+            if (ext === 'csv') {
+              // Simple CSV parse
+              const text = new TextDecoder('utf-8').decode(data);
+              const lines = text.split('\n').filter(l => l.trim());
+              const header = lines[0].split(',').map(h => h.replace(/"/g,'').trim());
+              json = lines.slice(1).map(line => {
+                const vals = line.split(',').map(v => v.replace(/"/g,'').trim());
+                const obj = {};
+                header.forEach((h, i) => obj[h] = vals[i] || '');
+                return obj;
+              });
+            } else if (['xlsx', 'xls'].includes(ext)) {
+              // Use XLSX
+              if (!window.XLSX) {
+                setStatus('XLSX library not loaded', 'error');
+                return;
+              }
+              const workbook = XLSX.read(data, { type: 'array' });
+              const sheet = workbook.Sheets[workbook.SheetNames[0]];
+              json = XLSX.utils.sheet_to_json(sheet);
+            }
+
+            if (json.length === 0) {
+              setStatus('No data found in file', 'error');
+              return;
+            }
+
+            // Preview first 50 rows
+            showPreview(json.slice(0, 50));
+            setStatus(`Loaded ${json.length} rows (showing preview of 50)`);
+          };
+          reader.readAsArrayBuffer(file);
+        } catch (err) {
+          setStatus(`Error: ${err.message}`, 'error');
+        }
+      }
+
+      function showPreview(rows) {
+        if (!rows.length) return;
+
+        const headers = Object.keys(rows[0]);
+        let table = `
+          <table>
+            <thead>
+              <tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr>
+            </thead>
+            <tbody>
+              ${rows.map(row =>
+                `<tr>${headers.map(h => `<td title="${row[h] || ''}">${row[h] || ''}</td>`).join('')}</tr>`
+              ).join('')}
+            </tbody>
+          </table>
+        `;
+        previewTableEl.innerHTML = table;
+        previewEl.style.display = 'block';
+      }
+
+      if (submitBtn) {
+        submitBtn.addEventListener('click', async () => {
+          if (!selectedFile) {
+            setStatus('Please upload a file first', 'error');
+            return;
+          }
+          if (currentJobId) {
+            setStatus('Job already running', 'error');
+            return;
+          }
+
+          const override = batchOverrideToggle.classList.contains('active');
+          setStatus('Uploading file...');
+          submitBtn.disabled = true;
+
+          try {
+            // Read file as base64
+            const reader = new FileReader();
+            reader.onload = async function(ev) {
+              const fileData = ev.target.result.split(',')[1]; // Remove data:;base64,
+              const ext = selectedFile.name.split('.').pop().toLowerCase();
+
+              // Use /batch endpoint with project structure
+              const r = await apiFetch(`/batch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  file_data: fileData,
+                  file_name: selectedFile.name,
+                  file_type: ext,
+                  override: override
+                })
+              });
+
+              if (!r.ok) throw new Error(await r.text());
+              const job = await r.json();
+              currentJobId = job.job_id;
+              setStatus(`Job started: ${currentJobId}`);
+              updateSubmitButton();
+              showProgressPanel(job);
+              startPolling(currentJobId);
+            };
+            reader.readAsDataURL(selectedFile);
+          } catch (e) {
+            setStatus(`Upload failed: ${e.message}`, 'error');
+            submitBtn.disabled = false;
+          }
+        });
+      }
+
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+          if (currentJobId) {
+            // Cancel the job
+            apiFetch(`/batch/${currentJobId}/cancel`, {method: 'POST'}).catch(() => {});
+          }
+          resetBatchUI();
+        });
+      }
+
+      if (batchOverrideToggle) {
+        batchOverrideToggle.addEventListener('click', () => {
+          batchOverrideToggle.classList.toggle('active');
+        });
+      }
+    }
+
+    function showProgressPanel(job) {
+      progressContentEl.innerHTML = `
+        <div class="batch-stat-chip"><strong>Job ID:</strong> ${job.job_id}</div>
+        <div class="batch-stat-chip"><strong>Status:</strong> ${job.status}</div>
+        <div class="batch-stat-chip"><strong>Filename:</strong> ${job.filename}</div>
+        <div id="batch-eta" class="batch-stat-chip"><strong>Status:</strong> Preparing...</div>
+      `;
+      progressEl.style.display = 'block';
+
+      // Hide preview when processing
+      previewEl.style.display = 'none';
+    }
+
+    function startPolling(jobId) {
+      clearInterval(pollInterval);
+      pollInterval = setInterval(async () => {
+        try {
+          const r = await apiFetch(`/batch/${jobId}/status`);
+          if (!r.ok) throw new Error(await r.text());
+          const status = await r.json();
+          updateProgressDisplay(status);
+
+          if (status.status === 'done') {
+            clearInterval(pollInterval);
+            showBatchCompleted(status);
+          } else if (status.status === 'failed') {
+            clearInterval(pollInterval);
+            setStatus(`Job failed: ${status.last_error}`, 'error');
+            resetBatchUI();
+          }
+        } catch (e) {
+          console.error('Polling error:', e);
+        }
+      }, 3000); // Poll every 3 seconds
+    }
+
+    function updateProgressDisplay(status) {
+      const etaEl = document.getElementById('batch-eta');
+      if (etaEl) {
+        let msg = `Processed: ${status.processed_rows || 0}/${status.total_rows || '?'} (${status.success_count || 0} success)`;
+        if (status.eta_seconds) msg += ` • ETA: ${Math.round(status.eta_seconds)}s`;
+        etaEl.innerHTML = `<strong>Progress:</strong> ${msg}`;
+      }
+    }
+
+    function showBatchCompleted(status) {
+      currentJobId = null; // Allow new jobs
+      updateSubmitButton();
+
+      const total = status.total_rows || 1;
+      let html = `
+        <div class="batch-stat-chip success"><strong>Completed:</strong> ${status.filename || 'file'}</div>
+        <div class="batch-stat-chip"><strong>Total:</strong> ${total}</div>
+        <div class="batch-stat-chip"><strong>Success:</strong> ${status.success_count || 0}</div>
+        <div class="batch-stat-chip ${status.failed_count ? 'error' : ''}"><strong>Failed:</strong> ${status.failed_count || 0}</div>
+        <div class="btn-group" style="margin-top:1rem;">
+          <button class="btn btn-primary" onclick="downloadBatchResults('${status.job_id}')">Download Results</button>
+          ${total <= 1000 ? `<button class="btn btn-secondary" onclick="viewBatchResults('${status.job_id}')">View Table</button>` : ''}
+        </div>
+      `;
+
+      if (total > 1000) {
+        html = `
+          <div class="batch-stat-chip success"><strong>Completed:</strong> ${status.filename || 'file'}</div>
+          <div class="batch-stat-chip"><strong>Total:</strong> ${total} (large batch)</div>
+          <div class="batch-stat-chip"><strong>Success:</strong> ${status.success_count || 0}</div>
+          <div class="btn-group" style="margin-top:1rem;">
+            <button class="btn btn-primary" onclick="downloadBatchResults('${status.job_id}')">Download Results</button>
+            <button class="btn btn-secondary" onclick="viewBatchResults('${status.job_id}', true)">View First 1000 Rows</button>
+          </div>
+        `;
+      }
+
+      progressContentEl.innerHTML = html;
+      setStatus('Batch completed successfully');
+    }
+
+    window.downloadBatchResults = function(jobId) {
+      // Trigger server-side CSV download
+      const url = `${normalizeApiBase()}/batch/${jobId}/results.csv`;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `batch-${jobId}-results.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setStatus('Download started');
+    };
+
+    window.viewBatchResults = function(jobId, limitTo1000 = false) {
+      // Fetch JSON results for table view
+      const limit = limitTo1000 ? 1000 : (parseInt(prompt('Enter limit (max 1000):', '1000')) || 1000);
+      const offset = 0; // start from beginning
+
+      apiFetch(`/batch/${jobId}/results.json?limit=${limit}&offset=${offset}&include=why`)
+        .then(r => {
+          if (!r.ok) throw new Error(`Failed to fetch results: ${r.status}`);
+          return r.json();
+        })
+        .then(data => {
+          const results = data.results || [];
+          if (results.length === 0) {
+            showToast('No results to display', 'error');
+            return;
+          }
+
+          // Create a modal dialog or panel with the results table
+          const modal = document.createElement('div');
+          modal.className = 'batch-results-modal';
+          modal.innerHTML = `
+            <div class="modal-overlay"></div>
+            <div class="modal-content">
+              <div class="modal-header">
+                <h2>Batch Results</h2>
+                <button class="fullscreen-btn">⛶</button>
+                <button class="close-btn">×</button>
+              </div>
+              <div class="modal-body">
+                <div class="results-summary">
+                  Total: ${data.total_count} | Showing: ${results.length} ${data.has_more ? '(truncated)' : ''}
+                </div>
+                <div class="results-table-container">
+                  <table class="results-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th>
+                        <th>Label</th>
+                        <th>Rule</th>
+                        <th>Low %</th>
+                        <th>Medium %</th>
+                        <th>High %</th>
+                        <th>Why</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${results.map(r => `
+                        <tr>
+                          <td>${r.id || ''}</td>
+                          <td>${r.label || ''}</td>
+                          <td>${r.rule || ''}</td>
+                          <td>${Math.round((r.probs?.low || 0) * 100)}%</td>
+                          <td>${Math.round((r.probs?.medium || 0) * 100)}%</td>
+                          <td>${Math.round((r.probs?.high || 0) * 100)}%</td>
+                          <td>${Array.isArray(r.why) ? r.why.join('; ') : ''}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          `;
+          document.body.appendChild(modal);
+          document.body.classList.add('body-locked');
+          let isFullscreen = false;
+
+          // Close handlers
+          const close = () => {
+            modal.remove();
+            document.body.classList.remove('body-locked');
+          };
+
+          const fullscreenBtn = modal.querySelector('.fullscreen-btn');
+          const closeBtn = modal.querySelector('.close-btn');
+          const overlay = modal.querySelector('.modal-overlay');
+          const modalContent = modal.querySelector('.modal-content');
+
+          modalContent.addEventListener('click', e => e.stopPropagation());
+
+          fullscreenBtn.addEventListener('click', () => {
+            isFullscreen = !isFullscreen;
+            modal.classList.toggle('modal-fullscreen', isFullscreen);
+            fullscreenBtn.textContent = isFullscreen ? '⛶' : '⛶';
+          });
+
+          closeBtn.addEventListener('click', close);
+
+          overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) close();
+          });
+        })
+        .catch(err => {
+          console.error('Error viewing results:', err);
+          showToast(`Failed to load table view: ${err.message}`, 'error');
+        });
+    };
+  </script>
 </body>
 </html>

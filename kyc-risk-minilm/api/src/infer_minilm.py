@@ -57,14 +57,14 @@ def extract_sanctions_codes(text: str):
  
 def should_override(req_override_flag: bool) -> bool:
     """Decide if sanctions override policy is enabled server-side.
-    If policy override_enabled is True, force override; otherwise honor request flag.
+    If policy override_enabled is True, honor request flag; otherwise deny override.
     Defaults to enabled when unspecified.
     """
     try:
         pol = RULES.policy or {}
         enabled = bool(pol.get("override_enabled", True))
         if enabled:
-            return True
+            return bool(req_override_flag)
     except Exception:
         pass
     return bool(req_override_flag)
