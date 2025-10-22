@@ -26,8 +26,8 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = MiniLMClassifier().to(device)
 
-    # head-only warmup
-    for p in model.enc.parameters(): p.requires_grad = False
+    # Freeze base model (encoder), train only classifier head
+    for p in model.model.base_model.parameters(): p.requires_grad = False
 
     opt = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=3e-4, weight_decay=0.01)
     train = DataLoader(DS("data/train.jsonl"), batch_size=BATCH_SIZE, shuffle=True,  collate_fn=collate)
@@ -79,12 +79,12 @@ def main():
         print(f"epoch {epoch} | valid acc {acc:.3f}")
         if acc > best:
             best = acc
-            torch.save(model.state_dict(), "minilm_cls_best.pt")
-            print("saved minilm_cls_best.pt")
+            model.model.save_pretrained("minilm_cls_best")
+            print("saved minilm_cls_best")
 
     # OPTIONAL: unfreeze encoder for 1–2 extra epochs (tiny finetune)
     print("Unfreezing encoder for fine-tuning...")
-    for p in model.enc.parameters(): p.requires_grad = True
+    for p in model.model.base_model.parameters(): p.requires_grad = True
     opt = torch.optim.AdamW(model.parameters(), lr=1e-5, weight_decay=0.01)
     for epoch in range(EPOCHS + 1, EPOCHS + 3):
         # ---- train ----
@@ -118,8 +118,8 @@ def main():
         print(f"epoch {epoch} | valid acc {acc:.3f}")
         if acc > best:
             best = acc
-            torch.save(model.state_dict(), "minilm_cls_best.pt")
-            print("saved minilm_cls_best.pt")
+            model.model.save_pretrained("minilm_cls_best")
+            print("saved minilm_cls_best")
     print(f"Final best valid acc: {best:.3f}")
 
 if __name__ == "__main__":

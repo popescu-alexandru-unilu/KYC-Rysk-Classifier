@@ -29,7 +29,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-MODEL_CKPT = os.getenv("MODEL_CKPT", "/app/minilm_cls_best.pt")
+MODEL_CKPT = os.getenv("MODEL_CKPT", "/app/models/minilm_cls_best")
 MAX_LEN    = int(os.getenv("MAX_LEN", "256"))
 
 _model = None
@@ -68,15 +68,18 @@ def _get_model():
     global _MODEL_ID
     if _model is not None:
         return _model
-    _, load_model, *_ = _load_all()
-    if not os.path.exists(MODEL_CKPT):
-        raise HTTPException(status_code=500, detail=f"MODEL_CKPT not found: {MODEL_CKPT}")
-    _model = load_model(MODEL_CKPT, _device)
+    from .model_loader import load_model
+    loaded = load_model()
+    _model = loaded["model"]
     # compute model id from checkpoint content if possible
     try:
         import hashlib as _hl
-        with open(MODEL_CKPT, 'rb') as _f:
-            _MODEL_ID = _hl.sha256(_f.read()).hexdigest()
+        if loaded["type"] == "hf":
+            ckpt_path = os.getenv("MODEL_CKPT", "")
+            _MODEL_ID = _hl.sha256(ckpt_path.encode()).hexdigest()
+        else:
+            with open(MODEL_CKPT, 'rb') as _f:
+                _MODEL_ID = _hl.sha256(_f.read()).hexdigest()
     except Exception:
         try:
             _MODEL_ID = os.path.basename(MODEL_CKPT)

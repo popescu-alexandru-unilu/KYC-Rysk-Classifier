@@ -192,14 +192,14 @@ def build_reasons(text: str, label: str, probs: dict, rule: str):
     if s["country"]:
         bucket = country_bucket(s["country"])  # list/score driven
         if bucket == "high_risk":
-            why.append(f"Country: {s['country']} – FATF high-risk jurisdiction (policy bump applied)")
+            why.append(f"Country: {s['country']} - FATF high-risk jurisdiction (policy bump applied)")
         elif bucket == "monitor":
-            why.append(f"Country: {s['country']} – FATF on monitoring list")
+            why.append(f"Country: {s['country']} - FATF on monitoring list")
         elif bucket == "high_score":
             cut = (CFG.get("fatf", {}) or {}).get("bump_threshold", 80)
-            why.append(f"Country: {s['country']} – FATF score ≥ {cut} (policy bump applied)")
+            why.append(f"Country: {s['country']} - FATF score ≥ {cut} (policy bump applied)")
         else:
-            why.append(f"Country: {s['country']} – no additional FATF flags")
+            why.append(f"Country: {s['country']} - no additional FATF flags")
 
     # If still empty, fall back to model confidence
     if not why:
@@ -278,30 +278,35 @@ def nudge_probs_to_label(probs: dict, target: str, alpha: float = 0.15) -> dict:
     return p
 
 def load_model(ckpt_path: str, device: str):
-    m = MiniLMClassifier().to(device)
-    m.load_state_dict(torch.load(ckpt_path, map_location=device))
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer
+    m = MiniLMClassifier()
+    if os.path.isdir(ckpt_path):
+        m.model = AutoModelForSequenceClassification.from_pretrained(ckpt_path)
+        m.tokenizer = AutoTokenizer.from_pretrained(ckpt_path)
+    else:
+        m.model.load_state_dict(torch.load(ckpt_path, map_location=device))
+    m.to(device)
     m.eval()
     return m
 
 @torch.no_grad()
 def classify_batch(model, device, texts, max_len):
-    # call featurize with a smaller max_len to save RAM
     # optional pre-truncation for very long texts
     processed = []
     for t in texts:
         processed.append(_preprocess_long_text(t) if len(t) > 4000 else t)
 
-    emb = model.featurize(processed, device=device, max_len=max_len)   # [B, D]
-    raw = model.head(emb)                                              # [B, C]
+    model.to(device)
+    logits = model(processed, device=device)
     # temperature scaling if provided
     T = 1.0
     try:
         T = float((RULES.policy or {}).get("temperature", 1.0))  # type: ignore[attr-defined]
     except Exception:
         T = 1.0
-    logits = (raw / max(1e-6, T)).softmax(-1).cpu().tolist()           # [B, C]
+    probs = (logits / max(1e-6, T)).softmax(-1).cpu().tolist()           # [B, C]
     out = []
-    for p_idx, p in enumerate(logits):
+    for p_idx, p in enumerate(probs):
         lbl = LABELS[int(max(range(len(LABELS)), key=lambda i: p[i]))]
         res = {"probs": {LABELS[i]: p[i] for i in range(len(LABELS))}, "label": lbl}
         # soft policy: bump label based on parsed signals

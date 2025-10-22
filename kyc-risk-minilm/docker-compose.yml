@@ -3,12 +3,12 @@ services:
     build: ./api
     environment:
       AUDIT_HMAC: "change_me_in_prod"
-      MODEL_CKPT: /app/minilm_cls_best.pt
+      MODEL_CKPT: /app/models/minilm_cls_best
       RISK_RULES: /app/config/risk_rules.yaml
     volumes:
       - ./config:/app/config:ro
       - ./logs:/app/logs
-      - ./minilm_cls_best.pt:/app/minilm_cls_best.pt:ro
+      - ./minilm_cls_best:/app/models/minilm_cls_best:ro
     ports: ["8000:8000"]
     healthcheck:
       test: ["CMD","curl","-f","http://localhost:8000/health"]
