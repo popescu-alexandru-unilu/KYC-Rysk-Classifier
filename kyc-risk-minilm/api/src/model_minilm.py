@@ -38,7 +38,8 @@ class MiniLMClassifier(nn.Module):
         batch = {k: v.to(device) for k, v in batch.items()}
         # Use the model's pooling (HF handles pooling automatically in forward)
         with torch.no_grad():
-            outputs = self.base_model(**batch)  # Get embeddings
+            # Use the encoder (base model) to produce hidden states or pooler output
+            outputs = self.model.base_model(**batch)
             pooled = outputs.pooler_output if hasattr(outputs, 'pooler_output') else outputs.last_hidden_state.mean(dim=1)
         return pooled
 
@@ -56,7 +57,8 @@ class MiniLMClassifier(nn.Module):
         )
         batch = {k: v.to(device) for k, v in batch.items()}
         self.to(device)
-        outputs = super().forward(**batch)
+        # Call the HF model to obtain logits
+        outputs = self.model(**batch)
         return outputs.logits
 
 # --- SMOKE TEST (runs only if you execute this file directly) ---
