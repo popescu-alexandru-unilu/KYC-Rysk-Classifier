@@ -289,15 +289,17 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <script>
     // Robust API base + retry fallback (handles dev servers without proxy)
-    function normalizeApiBase(){
-      try{
-        var b=(window.API_BASE||'').trim();
-        if(!b || b==='/api'){
-          if(String(window.location.port||'')==='3000') return 'http://localhost:8000';
-          return '/api';
-        }
-        return b.replace(/\/+$/,'');
-      }catch(_){ return 'http://localhost:8000'; }
+    function normalizeApiBase() {
+      const host = (location.hostname || '').toLowerCase();
+      const port = String(location.port || '');
+
+      // Only treat as local dev when you're actually on your own machine
+      const isLocalDev = (host === 'localhost' || host === '127.0.0.1') && port === '3000';
+
+      const b = (window.API_BASE || '').trim();
+      if (b && b !== '/api') return b.replace(/\/+$/,'');   // explicit override
+
+      return isLocalDev ? 'http://localhost:8000' : '/api';  // production = relative /api
     }
     async function apiFetch(path, opts){
       const base=normalizeApiBase();
