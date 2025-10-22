@@ -5,8 +5,6 @@ services:
       AUDIT_HMAC: "change_me_in_prod"
       MODEL_CKPT: /app/models/minilm_cls_best
       RISK_RULES: /app/config/risk_rules.yaml
-      EAGER_LOAD: "false"          # do not fail startup when model mount is empty
-      STRICT_HEALTH: "false"       # health returns 200 with ok=false until model is valid
     volumes:
       - ./config:/app/config:ro
       - ./logs:/app/logs
@@ -31,7 +29,7 @@ services:
       - ./ui/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
 
   # optional: nginx reverse proxy + TLS (bring your certs or use Caddy)
