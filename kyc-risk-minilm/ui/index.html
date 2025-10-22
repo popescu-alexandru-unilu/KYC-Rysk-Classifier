@@ -305,10 +305,10 @@
       try{
         const r=await fetch(url, opts);
         if(r.status!==404) return r;
-        if(base.startsWith('/')){ return await fetch(`http://localhost:8000${path}`, opts); }
+        if(base.startsWith('/') && ['localhost', '127.0.0.1'].includes(location.hostname)){ return await fetch(`http://localhost:8000${path}`, opts); }
         return r;
       }catch(e){
-        if(base.startsWith('/')){ return await fetch(`http://localhost:8000${path}`, opts); }
+        if(base.startsWith('/') && ['localhost', '127.0.0.1'].includes(location.hostname)){ return await fetch(`http://localhost:8000${path}`, opts); }
         throw e;
       }
     }

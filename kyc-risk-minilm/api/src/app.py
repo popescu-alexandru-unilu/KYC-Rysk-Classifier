@@ -471,7 +471,10 @@ def classify(payload: ClassifyRequest, request: Request, response: Response):
     # API key auth
     require_api_key(request)
     t0 = time.perf_counter()
-    text     = payload.text.strip()
+    text     = payload.text
+    if not text or not text.strip():
+        raise HTTPException(status_code=400, detail="text is required and cannot be empty")
+    text = text.strip()
     if ("[KYC]" not in text) or ("[COUNTRY]" not in text):
         raise HTTPException(status_code=400, detail="missing required tags [KYC] and/or [COUNTRY]")
     override = bool(payload.override if payload.override is not None else True)
