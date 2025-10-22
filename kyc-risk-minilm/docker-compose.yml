@@ -3,12 +3,13 @@ services:
     build: ./api
     environment:
       AUDIT_HMAC: "change_me_in_prod"
-      MODEL_CKPT: /app/models/minilm_cls_best
+      MODEL_CKPT: "${MODEL_CKPT}"
       RISK_RULES: /app/config/risk_rules.yaml
     volumes:
       - ./config:/app/config:ro
       - ./logs:/app/logs
       - ./minilm_cls_best:/app/models/minilm_cls_best:ro
+      - ${PT_HOST_PATH}/minilm_cls_best.pt:/app/models/minilm_cls_best.pt:ro
     expose:
       - "8000"
     healthcheck:
