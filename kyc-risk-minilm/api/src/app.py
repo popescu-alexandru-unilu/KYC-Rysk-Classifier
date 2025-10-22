@@ -176,8 +176,9 @@ def health():
         "model_id": _MODEL_ID,
         "override_enabled": override_enabled,
     }
-    # If checkpoint invalid, return 503 to trip healthcheck
-    if not payload["ok"]:
+    # If checkpoint invalid, return 503 only when STRICT_HEALTH=true (default).
+    strict = os.getenv("STRICT_HEALTH", "true").strip().lower() in ("1","true","yes","on")
+    if not payload["ok"] and strict:
         from fastapi import status
         return Response(content=json.dumps(payload), media_type="application/json", status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
     return payload
@@ -577,6 +578,10 @@ def classify(payload: ClassifyRequest, request: Request, response: Response):
     override = bool(payload.override if payload.override is not None else True)
     max_len  = int(payload.max_len or MAX_LEN)
 
+    # Guard: checkpoint must be valid to avoid 500s
+    ck = _validate_ckpt(MODEL_CKPT)
+    if not ck.get("ok"):
+        raise HTTPException(status_code=503, detail={"error":"checkpoint_invalid","reason": ck.get("reason"), "missing": ck.get("missing"), "path": MODEL_CKPT})
     try:
         MiniLMClassifier, load_model, classify_batch, sanctions_hit, build_reasons, override_high_payload, LABELS, should_override, extract_sanctions_codes = _load_all()
         model = _get_model()
@@ -708,6 +713,9 @@ def classify_batch_route(payload: BatchRequest, request: Request, response: Resp
     override = bool(payload.override if payload.override is not None else True)
     max_len  = int(payload.max_len or MAX_LEN)
 
+    ck = _validate_ckpt(MODEL_CKPT)
+    if not ck.get("ok"):
+        raise HTTPException(status_code=503, detail={"error":"checkpoint_invalid","reason": ck.get("reason"), "missing": ck.get("missing"), "path": MODEL_CKPT})
     _, _, classify_batch, sanctions_hit, build_reasons, override_high_payload, _, should_override, extract_sanctions_codes = _load_all()
     model = _get_model()
 
