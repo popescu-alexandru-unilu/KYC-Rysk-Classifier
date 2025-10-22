@@ -1,5 +1,6 @@
 # api/src/app.py
 import os, time, json, hashlib, base64, tempfile, shutil, csv, zipfile, io
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query, Request, BackgroundTasks
 from fastapi.responses import Response, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -87,6 +88,74 @@ def _get_model():
             _MODEL_ID = None
     return _model
 
+def _validate_ckpt(path_str: str):
+    """Lightweight checkpoint validation for health endpoint.
+    - HF dir: require config.json(with model_type), pytorch_model.bin, tokenizer files
+    - Torch file: require .pt/.pth exists
+    Returns a dict with details and ok flag.
+    """
+    out = {
+        "ok": False,
+        "type": None,
+        "exists": False,
+        "reason": None,
+        "num_labels": None,
+        "id2label": None,
+        "missing": [],
+    }
+    try:
+        p = Path(path_str or "")
+        if not p.exists():
+            out["reason"] = f"not found: {p}"
+            return out
+        out["exists"] = True
+        if p.is_dir():
+            out["type"] = "hf"
+            # required files
+            req = ["config.json", "pytorch_model.bin"]
+            opt_tokenizer = ["tokenizer.json", "tokenizer_config.json", "special_tokens_map.json", "vocab.txt", "merges.txt", "vocab.json"]
+            for f in req:
+                if not (p / f).exists():
+                    out["missing"].append(f)
+            # need at least one tokenizer artifact
+            if not any((p / f).exists() for f in opt_tokenizer):
+                out["missing"].append("tokenizer_files")
+            # inspect config.json
+            try:
+                cfg = json.load(open(p / "config.json", encoding="utf-8"))
+                out["num_labels"] = cfg.get("num_labels")
+                out["id2label"] = cfg.get("id2label")
+                if not cfg.get("model_type"):
+                    out["missing"].append("config.model_type")
+            except Exception as e:
+                out["reason"] = f"config.json parse failed: {e}"
+            # label mismatch note (non-fatal for health but useful)
+            try:
+                from .model_minilm import NUM_LABELS as CODE_NUM_LABELS
+                if out.get("num_labels") and CODE_NUM_LABELS and int(out["num_labels"]) != int(CODE_NUM_LABELS):
+                    out["label_mismatch"] = {"ckpt": out["num_labels"], "code": CODE_NUM_LABELS}
+            except Exception:
+                pass
+            if not out["missing"] and not out.get("reason"):
+                out["ok"] = True
+            else:
+                if not out.get("reason"):
+                    out["reason"] = f"missing: {', '.join(out['missing'])}"
+            return out
+        else:
+            # single file
+            ext = p.suffix.lower()
+            if ext in (".pt", ".pth"):
+                out["type"] = "torch"
+                out["ok"] = True
+                return out
+            out["type"] = "unknown"
+            out["reason"] = f"unsupported file ext: {ext}"
+            return out
+    except Exception as e:
+        out["reason"] = str(e)
+        return out
+
 @app.get("/health")
 def health():
     override_enabled = True
@@ -94,14 +163,39 @@ def health():
         override_enabled = bool((RULES.policy or {}).get("override_enabled", True))
     except Exception:
         pass
-    return {
-        "ok": True,
-        "ckpt_exists": os.path.exists(MODEL_CKPT),
+    ck = _validate_ckpt(MODEL_CKPT)
+    payload = {
+        "ok": bool(ck.get("ok")),
+        "ckpt_exists": bool(ck.get("exists")),
+        "ckpt_type": ck.get("type"),
+        "ckpt_reason": ck.get("reason"),
+        "ckpt_num_labels": ck.get("num_labels"),
+        "ckpt_id2label": ck.get("id2label"),
         "device": _device,
         "policy_config_hash": POLICY_CONFIG_HASH,
         "model_id": _MODEL_ID,
         "override_enabled": override_enabled,
     }
+    # If checkpoint invalid, return 503 to trip healthcheck
+    if not payload["ok"]:
+        from fastapi import status
+        return Response(content=json.dumps(payload), media_type="application/json", status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+    return payload
+
+@app.on_event("startup")
+def _maybe_eager_load():
+    """Optionally load model at startup to fail fast.
+    Set EAGER_LOAD=true to enable. Defaults to true.
+    """
+    flag = os.getenv("EAGER_LOAD", "true").strip().lower() in ("1","true","yes","on")
+    if not flag:
+        return
+    # Validate checkpoint first; if invalid, raise to stop startup
+    ck = _validate_ckpt(MODEL_CKPT)
+    if not ck.get("ok"):
+        raise RuntimeError(f"Invalid checkpoint for startup: {ck}")
+    # Load once
+    _ = _get_model()
 
 @app.get("/metrics")
 def metrics():

@@ -4,6 +4,7 @@ from .model_minilm import MiniLMClassifier, NUM_LABELS
 from .config import load_rules, RiskRules
 
 LABELS = ["low","medium","high"] if NUM_LABELS == 3 else ["low","high"]
+LABELS_BY_COUNT = {2: ["low","high"], 3: ["low","medium","high"]}
 ORDER  = {"low": 0, "medium": 1, "high": 2}
 REV    = {v: k for k, v in ORDER.items()}
 
@@ -307,13 +308,23 @@ def classify_batch(model, device, texts, max_len):
     probs = (logits / max(1e-6, T)).softmax(-1).cpu().tolist()           # [B, C]
     out = []
     for p_idx, p in enumerate(probs):
-        lbl = LABELS[int(max(range(len(LABELS)), key=lambda i: p[i]))]
-        res = {"probs": {LABELS[i]: p[i] for i in range(len(LABELS))}, "label": lbl}
+        C = len(p)
+        labels = LABELS_BY_COUNT.get(C, [f"class_{i}" for i in range(C)])
+        pred = int(max(range(C), key=lambda i: p[i]))
+        lbl = labels[pred]
+        res = {"probs": {labels[i]: p[i] for i in range(C)}, "label": lbl}
         # soft policy: bump label based on parsed signals
         parsed = parse_signals(texts[p_idx])
         bumped = bump_label_by_rules(parsed, res["label"])  # soft lift
         if bumped != res["label"]:
-            res["label"] = bumped
+            # If model is binary and bump returned 'medium', clamp sensibly
+            if bumped not in res["probs"]:
+                if bumped == "medium" and "high" in res["probs"]:
+                    res["label"] = "high"
+                else:
+                    res["label"] = lbl  # fallback to predicted label
+            else:
+                res["label"] = bumped
             res["probs"] = nudge_probs_to_label(res["probs"], res["label"])  # cosmetic shift
         # country-based bump (FATF high-risk) if enabled
         res = apply_additional_rules(res, texts[p_idx], RULES)
